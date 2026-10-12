@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.zip
+node_modules/
+.aws/
+infra/secrets.json
+infra/outputs.json
+.pytest_cache/
