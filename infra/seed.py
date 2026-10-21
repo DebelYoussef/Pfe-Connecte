@@ -56,6 +56,7 @@ def build(password_hash):
         item = {"userId": uid(kind, i), "email": email, "passwordHash": password_hash,
                 "role": role, "createdAt": CREATED, **extra}
         items["Users"].append(item)
+        items["Reference"].append({"type": "EMAIL", "id": email, "userId": item["userId"]})
         accounts.setdefault(role, email)
         return item
 
@@ -76,7 +77,6 @@ def build(password_hash):
 
     for n in range(120):
         company = companies[n % 40]
-        etab = etab_ids[n % 2]
         gouv = rng.choice(GOUVERNORATS)
         created = f"2026-09-{rng.randint(1, 28):02d}T{rng.randint(8, 18):02d}:00:00Z"
         skills = rng.sample(SKILLS, rng.randint(3, 5))
@@ -86,7 +86,7 @@ def build(password_hash):
             "description": f"Stage de fin d'études autour de {', '.join(skills)}.",
             "keywords": set(skills[:3]), "skills": set(skills), "gouvernorat": gouv,
             "durationWeeks": rng.choice([12, 16, 20]), "status": "OPEN",
-            "etabStatus": f"{etab}#OPEN", "gouvernoratCreatedAt": f"{gouv}#{created}",
+            "gouvernoratCreatedAt": f"{gouv}#{created}",
             "similar": [], "createdAt": created})
 
     for year in range(2021, 2026):

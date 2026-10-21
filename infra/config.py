@@ -1,3 +1,8 @@
+import pathlib
+import yaml
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
 """Single source of truth for infra names. Keys and indexes mirror docs/schema.md."""
 import os
 
@@ -24,14 +29,13 @@ def _g(name, hash_key, range_key=None):
 
 TABLES = {
     "Users": _t("userId", gsis=[
-        _g("byEmail", "email"),
         _g("byEtabRole", "etab", "role"),
         _g("internsByLastJournal", "stageEtab", "lastJournal"),
         _g("noInternshipByEtab", "sansStageEtab"),
     ]),
     "Offers": _t("offerId", gsis=[
         _g("byCompany", "companyId", "createdAt"),
-        _g("openByRegion", "etabStatus", "gouvernoratCreatedAt"),
+        _g("openByRegion", "status", "gouvernoratCreatedAt"),
     ]),
     "Applications": _t("studentId", "offerId", gsis=[
         _g("byOffer", "offerId", "studentId"),
@@ -59,11 +63,20 @@ TABLES = {
     "Reference": _t("type", "id"),
 }
 
-# Lambdas to deploy: folder name under lambdas/ -> API routes it serves.
-# Phase 2 replaces the routes by the ones read from docs/openapi.yaml (x-lambda).
-LAMBDAS = {
-    "health": {"routes": ["GET /v1/health"]},
-}
+def routes_from_openapi():
+    spec = yaml.safe_load((ROOT / "docs" / "openapi.yaml").read_text())
+    lambdas = {}
+    for path, operations in spec["paths"].items():
+        for method, op in operations.items():
+            name = op.get("x-lambda") if isinstance(op, dict) else None
+            if method.upper() in ("GET", "POST", "PUT", "PATCH", "DELETE") and name:
+                if (ROOT / "lambdas" / name / "handler.py").is_file():
+                    lambdas.setdefault(name, {"routes": []})["routes"].append(
+                        f"{method.upper()} {path}")
+    return lambdas
+
+
+LAMBDAS = routes_from_openapi()
 
 
 def table_name(logical):
