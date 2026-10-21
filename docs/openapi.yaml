@@ -1,0 +1,1912 @@
+openapi: 3.0.3
+info:
+  title: PFE Connect API
+  version: 1.0.0
+  description: >-
+    REST API of PFE Connect (university internship and final-year project management).
+    Serverless on AWS (API Gateway + Lambda + DynamoDB + S3), region us-east-1.
+    Contract frozen with schema.md (contract-v1). Roles are enforced server-side in the Lambdas.
+servers:
+  - url: https://{apiId}.execute-api.us-east-1.amazonaws.com
+    description: API Gateway (paths already include the /v1 prefix)
+    variables:
+      apiId:
+        default: example
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Offers
+  - name: Applications
+  - name: Conventions
+  - name: Supervision
+  - name: Journals
+  - name: Reports
+  - name: Notifications
+  - name: Verify
+  - name: Admin
+  - name: Health
+
+paths:
+  /v1/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness check
+      x-lambda: health
+      x-roles: public
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+
+  # ---------------------------------------------------------------- Auth
+  /v1/auth/signup:
+    post:
+      tags: [Auth]
+      operationId: signup
+      summary: Create an account (ETU, ENT or ENS only)
+      description: RESP and ADM accounts are created by an administrator or by the seed script.
+      x-lambda: auth
+      x-roles: public
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SignupRequest'}
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409':
+          description: Email already used (code EMAIL_TAKEN)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example:
+                error: {code: EMAIL_TAKEN, message: Email already registered, details: {}, requestId: 6f1c2e0a-0000-4000-8000-000000000000}
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in and obtain a JWT (HS256, 60 minutes)
+      x-lambda: auth
+      x-roles: public
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /v1/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: Get the caller's profile
+      x-lambda: auth
+      x-roles: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    put:
+      tags: [Auth]
+      operationId: updateMe
+      summary: Update the caller's profile
+      description: Student fields (department, specialty, skills, gouvernorat) or company fields (companyName). Triggers recommendation recomputation for students.
+      x-lambda: auth
+      x-roles: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProfileUpdate'}
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /v1/me/cv-upload-url:
+    post:
+      tags: [Auth]
+      operationId: createCvUploadUrl
+      summary: Get a presigned S3 POST to upload the student's CV
+      x-lambda: auth
+      x-roles: [ETU]
+      responses:
+        '200':
+          description: Presigned upload (5 minutes, content type and size enforced by the policy)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresignedPost'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/teachers/me/expertise:
+    put:
+      tags: [Auth]
+      operationId: updateTeacherExpertise
+      summary: Declare the teacher's areas of expertise
+      x-lambda: auth
+      x-roles: [ENS]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExpertiseUpdate'}
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  # -------------------------------------------------------------- Offers
+  /v1/offers:
+    get:
+      tags: [Offers]
+      operationId: listOffers
+      summary: List offers
+      description: >-
+        ENT callers get their own offers (any status). All other roles get OPEN offers,
+        optionally filtered by gouvernorat.
+      x-lambda: offers
+      x-roles: []
+      parameters:
+        - name: gouvernorat
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of offers
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OfferPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Offers]
+      operationId: createOffer
+      summary: Publish an offer (similar-subject warning returned in `similar`)
+      x-lambda: offers
+      x-roles: [ENT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OfferCreate'}
+      responses:
+        '201':
+          description: Offer created (status OPEN); `similar` holds a non-blocking warning
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Offer'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/offers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OfferIdPath'
+    get:
+      tags: [Offers]
+      operationId: getOffer
+      summary: Get an offer
+      x-lambda: offers
+      x-roles: []
+      responses:
+        '200':
+          description: Offer
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Offer'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Offers]
+      operationId: updateOffer
+      summary: Edit an offer or close it (status CLOSED or FILLED)
+      x-lambda: offers
+      x-roles: [ENT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OfferUpdate'}
+      responses:
+        '200':
+          description: Updated offer
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Offer'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/students/me/recommendations:
+    get:
+      tags: [Offers]
+      operationId: listMyRecommendations
+      summary: Top 5 recommended offers for the student
+      x-lambda: offers
+      x-roles: [ETU]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Recommendations ordered by rank
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RecommendationPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  # -------------------------------------------------------- Applications
+  /v1/offers/{id}/applications:
+    parameters:
+      - $ref: '#/components/parameters/OfferIdPath'
+    post:
+      tags: [Applications]
+      operationId: applyToOffer
+      summary: Apply to an offer (max 5 active applications per student)
+      x-lambda: applications
+      x-roles: [ETU]
+      responses:
+        '201':
+          description: Application created with status PENDING
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Application'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: 6th active application, already applied, or offer not OPEN
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+    get:
+      tags: [Applications]
+      operationId: listOfferApplications
+      summary: Applications received for an offer (opening marks PENDING ones as VIEWED)
+      x-lambda: applications
+      x-roles: [ENT]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of applications
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApplicationPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/students/me/applications:
+    get:
+      tags: [Applications]
+      operationId: listMyApplications
+      summary: The student's applications and their status
+      x-lambda: applications
+      x-roles: [ETU]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of applications
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApplicationPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/applications/{offerId}/{studentId}:
+    parameters:
+      - {name: offerId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: studentId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      tags: [Applications]
+      operationId: updateApplicationStatus
+      summary: Apply an action to an application
+      description: >-
+        ENT: in_progress, accept, reject. ETU: confirm (creates the convention and withdraws
+        the other active applications), decline, withdraw. Wrong role for the action is 403;
+        invalid transition is 409.
+      x-lambda: applications
+      x-roles: [ETU, ENT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApplicationActionRequest'}
+      responses:
+        '200':
+          description: Updated application
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Application'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  # --------------------------------------------------------- Conventions
+  /v1/conventions:
+    get:
+      tags: [Conventions]
+      operationId: listConventions
+      summary: List conventions visible to the caller
+      description: >-
+        ETU: own convention. ENT: conventions of the company. RESP: conventions of the
+        institution (pending their signature by default). With withoutSupervisor=true
+        (RESP only): approved conventions whose student has no supervisor.
+      x-lambda: conventions
+      x-roles: [ETU, ENT, RESP]
+      parameters:
+        - name: withoutSupervisor
+          in: query
+          schema: {type: boolean}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of conventions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConventionPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/conventions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ConventionIdPath'
+    get:
+      tags: [Conventions]
+      operationId: getConvention
+      summary: Get a convention with its audit trail
+      x-lambda: conventions
+      x-roles: [ETU, ENT, RESP]
+      responses:
+        '200':
+          description: Convention and events
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConventionDetail'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Conventions]
+      operationId: correctConvention
+      summary: Correct the text of a refused convention (state DRAFT)
+      x-lambda: conventions
+      x-roles: [RESP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConventionCorrection'}
+      responses:
+        '200':
+          description: Corrected convention (PDF regenerated)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Convention'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/conventions/{id}/sign:
+    parameters:
+      - $ref: '#/components/parameters/ConventionIdPath'
+    post:
+      tags: [Conventions]
+      operationId: signConvention
+      summary: Sign at the caller's step (RESP signature is the final approval)
+      x-lambda: conventions
+      x-roles: [ETU, ENT, RESP]
+      responses:
+        '200':
+          description: Convention in its next state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Convention'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/conventions/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ConventionIdPath'
+    post:
+      tags: [Conventions]
+      operationId: rejectConvention
+      summary: Refuse the convention (reason mandatory, returns to DRAFT)
+      x-lambda: conventions
+      x-roles: [ENT, RESP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RejectRequest'}
+      responses:
+        '200':
+          description: Convention back in DRAFT, signatures invalidated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Convention'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/conventions/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/ConventionIdPath'
+    post:
+      tags: [Conventions]
+      operationId: resubmitConvention
+      summary: Resend a corrected convention (DRAFT to SUBMITTED)
+      x-lambda: conventions
+      x-roles: [RESP]
+      responses:
+        '200':
+          description: Convention in SUBMITTED, signature circuit restarts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Convention'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/conventions/{id}/pdf-url:
+    parameters:
+      - $ref: '#/components/parameters/ConventionIdPath'
+    get:
+      tags: [Conventions]
+      operationId: getConventionPdfUrl
+      summary: Presigned download URL (5 minutes); final copy with QR code once APPROVED
+      x-lambda: conventions
+      x-roles: [ETU, ENT, RESP]
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PdfUrl'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/templates/convention:
+    get:
+      tags: [Conventions]
+      operationId: getConventionTemplate
+      summary: Current convention template of the institution
+      x-lambda: conventions
+      x-roles: [RESP]
+      responses:
+        '200':
+          description: Current template version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConventionTemplate'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Conventions]
+      operationId: putConventionTemplate
+      summary: Save a new template version (text with {{placeholders}})
+      x-lambda: conventions
+      x-roles: [RESP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConventionTemplateInput'}
+      responses:
+        '200':
+          description: New template version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConventionTemplate'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/settings/deadline:
+    get:
+      tags: [Conventions]
+      operationId: getDeadlineSettings
+      summary: PFE deadline of the institution
+      x-lambda: conventions
+      x-roles: [RESP]
+      responses:
+        '200':
+          description: Deadline settings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeadlineSettings'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    put:
+      tags: [Conventions]
+      operationId: putDeadlineSettings
+      summary: Set, change or disable the PFE deadline
+      x-lambda: conventions
+      x-roles: [RESP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeadlineSettings'}
+      responses:
+        '200':
+          description: Saved settings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeadlineSettings'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  # --------------------------------------------------------- Supervision
+  /v1/teachers:
+    get:
+      tags: [Supervision]
+      operationId: listTeachers
+      summary: Teachers of the caller's institution, filtered by expertise
+      x-lambda: supervision
+      x-roles: [ETU, RESP]
+      parameters:
+        - name: expertise
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of teachers
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TeacherPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/supervision/request:
+    post:
+      tags: [Supervision]
+      operationId: requestSupervision
+      summary: Ask a teacher to supervise (after convention APPROVED)
+      x-lambda: supervision
+      x-roles: [ETU]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupervisionRequest'}
+      responses:
+        '201':
+          description: Request created (REQUESTED)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Supervision'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/supervision/requests:
+    get:
+      tags: [Supervision]
+      operationId: listSupervisionRequests
+      summary: Supervision records of the teacher (default status REQUESTED)
+      x-lambda: supervision
+      x-roles: [ENS]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/SupervisionStatus'}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of supervisions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupervisionPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/supervision/{studentId}/respond:
+    parameters:
+      - $ref: '#/components/parameters/StudentIdPath'
+    post:
+      tags: [Supervision]
+      operationId: respondToSupervision
+      summary: Accept or decline a supervision request
+      x-lambda: supervision
+      x-roles: [ENS]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupervisionRespondRequest'}
+      responses:
+        '200':
+          description: Updated supervision
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Supervision'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/supervision/{studentId}/assign:
+    parameters:
+      - $ref: '#/components/parameters/StudentIdPath'
+    post:
+      tags: [Supervision]
+      operationId: assignSupervisor
+      summary: Directly assign a teacher to a student (effective immediately)
+      x-lambda: supervision
+      x-roles: [RESP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupervisionAssignRequest'}
+      responses:
+        '200':
+          description: Supervision with status ASSIGNED
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Supervision'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  # ------------------------------------------------------------ Journals
+  /v1/journals/{week}:
+    parameters:
+      - name: week
+        in: path
+        required: true
+        description: ISO week, e.g. 2026-W42
+        schema: {type: string, pattern: '^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$'}
+    put:
+      tags: [Journals]
+      operationId: putJournalEntry
+      summary: Create or replace the student's entry for a week
+      x-lambda: journals
+      x-roles: [ETU]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JournalEntryInput'}
+      responses:
+        '200':
+          description: Saved entry
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JournalEntry'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/students/{id}/journals:
+    parameters:
+      - {name: id, in: path, required: true, description: Student id (userId), schema: {type: string, format: uuid}}
+    get:
+      tags: [Journals]
+      operationId: listStudentJournals
+      summary: Journal entries of a student
+      description: ETU (self only), ENS (supervised students), ENT (own interns).
+      x-lambda: journals
+      x-roles: [ETU, ENS, ENT]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of entries
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JournalPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/journals/{studentId}/{week}/validate:
+    parameters:
+      - $ref: '#/components/parameters/StudentIdPath'
+      - name: week
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$'}
+    post:
+      tags: [Journals]
+      operationId: validateJournalEntry
+      summary: Company validates a weekly entry
+      x-lambda: journals
+      x-roles: [ENT]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JournalValidateRequest'}
+      responses:
+        '200':
+          description: Validated entry
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JournalEntry'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  # ------------------------------------------------------------- Reports
+  /v1/students/me/report-upload-url:
+    post:
+      tags: [Reports]
+      operationId: createReportUploadUrl
+      summary: Presigned S3 POST for the final report (PDF only, 20 MB max)
+      description: The S3 event then registers the new version (UNDER_REVIEW). Requires an associated supervisor.
+      x-lambda: reports
+      x-roles: [ETU]
+      responses:
+        '200':
+          description: Presigned upload
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresignedPost'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/students/me/reports:
+    get:
+      tags: [Reports]
+      operationId: listMyReports
+      summary: Versions and status of the student's report
+      x-lambda: reports
+      x-roles: [ETU]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of report versions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReportPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/reports:
+    get:
+      tags: [Reports]
+      operationId: listPendingReports
+      summary: Reports waiting for the caller's review
+      x-lambda: reports
+      x-roles: [ENT, ENS]
+      parameters:
+        - name: pending
+          in: query
+          required: true
+          schema: {type: string, enum: [me]}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of reports
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReportPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/reports/{studentId}/{version}/pdf-url:
+    parameters:
+      - $ref: '#/components/parameters/StudentIdPath'
+      - $ref: '#/components/parameters/VersionPath'
+    get:
+      tags: [Reports]
+      operationId: getReportPdfUrl
+      summary: Presigned download URL (5 minutes) for a report version
+      x-lambda: reports
+      x-roles: [ETU, ENT, ENS]
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PdfUrl'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/reports/{studentId}/{version}/review:
+    parameters:
+      - $ref: '#/components/parameters/StudentIdPath'
+      - $ref: '#/components/parameters/VersionPath'
+    post:
+      tags: [Reports]
+      operationId: reviewReport
+      summary: Company or supervisor decision on a report version
+      description: Comment is mandatory for CHANGES_REQUESTED. Report becomes VALIDATED only when both approve.
+      x-lambda: reports
+      x-roles: [ENT, ENS]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReportReviewRequest'}
+      responses:
+        '200':
+          description: Report version after the decision
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Report'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  # ------------------------------------------------------- Notifications
+  /v1/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: In-app notifications of the caller, newest first
+      x-lambda: notifications
+      x-roles: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of notifications
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  /v1/notifications/{id}/read:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Notification id as returned by the API (URL-encoded)
+        schema: {type: string}
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark a notification as read
+      x-lambda: notifications
+      x-roles: []
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Notification'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # -------------------------------------------------------------- Verify
+  /v1/verify/{id}:
+    get:
+      tags: [Verify]
+      operationId: verifyConvention
+      summary: Public QR code verification (no sensitive data, rate limited)
+      description: Unknown id or non-approved convention returns 200 with verified=false.
+      x-lambda: verify
+      x-roles: public
+      security: []
+      parameters:
+        - {name: id, in: path, required: true, description: Convention id (random UUID), schema: {type: string}}
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VerifyResult'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  # --------------------------------------------------------------- Admin
+  /v1/admin/users:
+    get:
+      tags: [Admin]
+      operationId: adminListUsers
+      summary: List users
+      x-lambda: admin
+      x-roles: [ADM]
+      parameters:
+        - name: role
+          in: query
+          schema: {$ref: '#/components/schemas/Role'}
+        - name: etab
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of users
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      operationId: adminCreateUser
+      summary: Create an account with any role (including RESP and ADM)
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminUserCreate'}
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/admin/users/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateUser
+      summary: Modify an account
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminUserUpdate'}
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/admin/institutions:
+    get:
+      tags: [Admin]
+      operationId: adminListInstitutions
+      summary: List institutions
+      x-lambda: admin
+      x-roles: [ADM]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of institutions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstitutionPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      operationId: adminCreateInstitution
+      summary: Create an institution
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstitutionInput'}
+      responses:
+        '201':
+          description: Institution created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Institution'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/admin/institutions/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateInstitution
+      summary: Modify an institution
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstitutionInput'}
+      responses:
+        '200':
+          description: Updated institution
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Institution'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/admin/departments:
+    get:
+      tags: [Admin]
+      operationId: adminListDepartments
+      summary: List departments
+      x-lambda: admin
+      x-roles: [ADM]
+      parameters:
+        - name: etab
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of departments
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DepartmentPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      operationId: adminCreateDepartment
+      summary: Create a department
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DepartmentInput'}
+      responses:
+        '201':
+          description: Department created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Department'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/admin/departments/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateDepartment
+      summary: Modify a department
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DepartmentInput'}
+      responses:
+        '200':
+          description: Updated department
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Department'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/admin/specialties:
+    get:
+      tags: [Admin]
+      operationId: adminListSpecialties
+      summary: List specialties
+      x-lambda: admin
+      x-roles: [ADM]
+      parameters:
+        - name: department
+          in: query
+          schema: {type: string}
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of specialties
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SpecialtyPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      operationId: adminCreateSpecialty
+      summary: Create a specialty
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SpecialtyInput'}
+      responses:
+        '201':
+          description: Specialty created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Specialty'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/admin/specialties/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateSpecialty
+      summary: Modify a specialty
+      x-lambda: admin
+      x-roles: [ADM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SpecialtyInput'}
+      responses:
+        '200':
+          description: Updated specialty
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Specialty'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned as nextCursor by the previous page
+      schema: {type: string}
+    OfferIdPath:
+      name: id
+      in: path
+      required: true
+      description: Offer id (offerId)
+      schema: {type: string, format: uuid}
+    ConventionIdPath:
+      name: id
+      in: path
+      required: true
+      description: Convention id (conventionId)
+      schema: {type: string, format: uuid}
+    StudentIdPath:
+      name: studentId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    VersionPath:
+      name: version
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+
+  responses:
+    BadRequest:
+      description: Invalid input, unknown field, or missing reason/comment (400)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            error: {code: VALIDATION_ERROR, message: Invalid input, details: {fields: [title]}, requestId: 6f1c2e0a-0000-4000-8000-000000000000}
+    Unauthorized:
+      description: Missing, invalid or expired token (401)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: Insufficient role or scope, or wrong signature step (403)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Resource does not exist or is outside the caller's scope (404)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: State or concurrency conflict (409)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    TooManyRequests:
+      description: Rate limit exceeded (429)
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+
+  schemas:
+    # ------------------------------------------------------------ errors
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, requestId]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details: {type: object, additionalProperties: true}
+            requestId: {type: string}
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [ok]}
+        timestamp: {type: string, format: date-time}
+
+    # -------------------------------------------------------------- enums
+    Role:
+      type: string
+      enum: [ETU, ENT, ENS, RESP, ADM]
+    PublicRole:
+      type: string
+      description: Roles allowed at signup
+      enum: [ETU, ENT, ENS]
+    OfferStatus:
+      type: string
+      enum: [OPEN, CLOSED, FILLED]
+    ApplicationStatus:
+      type: string
+      enum: [PENDING, VIEWED, IN_PROGRESS, ACCEPTED, REJECTED, CONFIRMED, DECLINED, WITHDRAWN]
+    ApplicationAction:
+      type: string
+      enum: [in_progress, accept, reject, confirm, decline, withdraw]
+    ConventionState:
+      type: string
+      enum: [DRAFT, SUBMITTED, SIGNED_STUDENT, SIGNED_COMPANY, APPROVED]
+    ConventionEventType:
+      type: string
+      enum: [SUBMITTED, SIGNED, REJECTED, RESUBMITTED, APPROVED]
+    SupervisionStatus:
+      type: string
+      enum: [REQUESTED, ACCEPTED, DECLINED, ASSIGNED]
+    SupervisionDecision:
+      type: string
+      enum: [ACCEPTED, DECLINED]
+    ReportStatus:
+      type: string
+      enum: [UNDER_REVIEW, CHANGES_REQUESTED, VALIDATED]
+    ReportDecision:
+      type: string
+      enum: [APPROVED, CHANGES_REQUESTED]
+
+    # --------------------------------------------------------------- auth
+    User:
+      type: object
+      required: [userId, email, role, createdAt]
+      properties:
+        userId: {type: string, format: uuid}
+        email: {type: string, format: email}
+        role: {$ref: '#/components/schemas/Role'}
+        etab: {type: string, description: Institution id (absent for companies)}
+        firstName: {type: string}
+        lastName: {type: string}
+        department: {type: string}
+        specialty: {type: string}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        cvKey: {type: string}
+        expertise: {type: array, items: {type: string}}
+        companyName: {type: string}
+        activeCount: {type: integer, minimum: 0, maximum: 5}
+        conventionId: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password}
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: {type: string, description: 'JWT HS256, 60 minutes'}
+        user: {$ref: '#/components/schemas/User'}
+    SignupRequest:
+      oneOf:
+        - $ref: '#/components/schemas/SignupStudent'
+        - $ref: '#/components/schemas/SignupCompany'
+        - $ref: '#/components/schemas/SignupTeacher'
+      discriminator:
+        propertyName: role
+        mapping:
+          ETU: '#/components/schemas/SignupStudent'
+          ENT: '#/components/schemas/SignupCompany'
+          ENS: '#/components/schemas/SignupTeacher'
+    SignupStudent:
+      type: object
+      additionalProperties: false
+      required: [email, password, role, firstName, lastName, etab, department, specialty, gouvernorat]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password, minLength: 8}
+        role: {type: string, enum: [ETU]}
+        firstName: {type: string}
+        lastName: {type: string}
+        etab: {type: string}
+        department: {type: string}
+        specialty: {type: string}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+    SignupCompany:
+      type: object
+      additionalProperties: false
+      required: [email, password, role, firstName, lastName, companyName]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password, minLength: 8}
+        role: {type: string, enum: [ENT]}
+        firstName: {type: string}
+        lastName: {type: string}
+        companyName: {type: string}
+    SignupTeacher:
+      type: object
+      additionalProperties: false
+      required: [email, password, role, firstName, lastName, etab]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password, minLength: 8}
+        role: {type: string, enum: [ENS]}
+        firstName: {type: string}
+        lastName: {type: string}
+        etab: {type: string}
+        expertise: {type: array, items: {type: string}}
+    ProfileUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        firstName: {type: string}
+        lastName: {type: string}
+        department: {type: string}
+        specialty: {type: string}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        companyName: {type: string}
+    ExpertiseUpdate:
+      type: object
+      additionalProperties: false
+      required: [expertise]
+      properties:
+        expertise: {type: array, items: {type: string}}
+    PresignedPost:
+      type: object
+      required: [url, fields, key, expiresIn]
+      properties:
+        url: {type: string, format: uri}
+        fields: {type: object, additionalProperties: {type: string}}
+        key: {type: string, description: S3 key the file will be stored under}
+        expiresIn: {type: integer, example: 300}
+    PdfUrl:
+      type: object
+      required: [url, expiresIn]
+      properties:
+        url: {type: string, format: uri}
+        expiresIn: {type: integer, example: 300}
+
+    # ------------------------------------------------------------- offers
+    Offer:
+      type: object
+      required: [offerId, companyId, title, description, status, createdAt]
+      properties:
+        offerId: {type: string, format: uuid}
+        companyId: {type: string, format: uuid}
+        title: {type: string}
+        description: {type: string}
+        keywords: {type: array, items: {type: string}}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        durationWeeks: {type: integer, minimum: 1}
+        status: {$ref: '#/components/schemas/OfferStatus'}
+        similar:
+          type: array
+          description: Similar archived subjects detected at publication (warning only)
+          items: {$ref: '#/components/schemas/SimilarSubject'}
+        createdAt: {type: string, format: date-time}
+    SimilarSubject:
+      type: object
+      required: [subjectId, score]
+      properties:
+        subjectId: {type: string}
+        score: {type: number, minimum: 0, maximum: 1}
+    OfferCreate:
+      type: object
+      additionalProperties: false
+      required: [title, description, keywords, skills, gouvernorat, durationWeeks]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, minLength: 1, maxLength: 5000}
+        keywords: {type: array, items: {type: string}}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        durationWeeks: {type: integer, minimum: 1}
+    OfferUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        title: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, minLength: 1, maxLength: 5000}
+        keywords: {type: array, items: {type: string}}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        durationWeeks: {type: integer, minimum: 1}
+        status: {$ref: '#/components/schemas/OfferStatus'}
+    Recommendation:
+      type: object
+      required: [rank, offerId, score]
+      properties:
+        rank: {type: integer, minimum: 1, maximum: 5}
+        offerId: {type: string, format: uuid}
+        score: {type: number, minimum: 0, maximum: 100}
+        computedAt: {type: string, format: date-time}
+        offer: {$ref: '#/components/schemas/Offer'}
+
+    # ------------------------------------------------------- applications
+    Application:
+      type: object
+      required: [studentId, offerId, status, createdAt]
+      properties:
+        studentId: {type: string, format: uuid}
+        offerId: {type: string, format: uuid}
+        companyId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ApplicationStatus'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        viewedAt: {type: string, format: date-time}
+    ApplicationActionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: {$ref: '#/components/schemas/ApplicationAction'}
+
+    # -------------------------------------------------------- conventions
+    Convention:
+      type: object
+      required: [conventionId, studentId, companyId, offerId, etab, state, createdAt]
+      properties:
+        conventionId: {type: string, format: uuid}
+        studentId: {type: string, format: uuid}
+        companyId: {type: string, format: uuid}
+        offerId: {type: string, format: uuid}
+        etab: {type: string}
+        state: {$ref: '#/components/schemas/ConventionState'}
+        renderedText: {type: string}
+        templateVersion: {type: integer}
+        pdfSha256: {type: string}
+        finalSha256: {type: string}
+        shortRef: {type: string}
+        currentActorId: {type: string, description: 'Student or company id, or RESP#{etab}; absent once APPROVED'}
+        stepSince: {type: string, format: date-time}
+        rejectionReason: {type: string}
+        approvedAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    ConventionEvent:
+      type: object
+      required: [conventionId, timestamp, type, actorId, actorRole]
+      properties:
+        conventionId: {type: string, format: uuid}
+        timestamp: {type: string, format: date-time}
+        type: {$ref: '#/components/schemas/ConventionEventType'}
+        actorId: {type: string}
+        actorRole: {$ref: '#/components/schemas/Role'}
+        fromState: {$ref: '#/components/schemas/ConventionState'}
+        toState: {$ref: '#/components/schemas/ConventionState'}
+        pdfSha256: {type: string}
+        reason: {type: string}
+    ConventionDetail:
+      allOf:
+        - $ref: '#/components/schemas/Convention'
+        - type: object
+          properties:
+            events:
+              type: array
+              items: {$ref: '#/components/schemas/ConventionEvent'}
+    ConventionCorrection:
+      type: object
+      additionalProperties: false
+      required: [renderedText]
+      properties:
+        renderedText: {type: string, minLength: 1}
+    RejectRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 1000}
+    ConventionTemplate:
+      type: object
+      required: [version, text]
+      properties:
+        etab: {type: string}
+        version: {type: integer, minimum: 1}
+        text: {type: string, description: 'Text with {{placeholders}}'}
+        createdAt: {type: string, format: date-time}
+    ConventionTemplateInput:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1}
+    DeadlineSettings:
+      type: object
+      additionalProperties: false
+      required: [deadlineEnabled]
+      properties:
+        deadline: {type: string, format: date, nullable: true}
+        deadlineEnabled: {type: boolean}
+
+    # -------------------------------------------------------- supervision
+    TeacherSummary:
+      type: object
+      required: [userId, firstName, lastName]
+      properties:
+        userId: {type: string, format: uuid}
+        firstName: {type: string}
+        lastName: {type: string}
+        etab: {type: string}
+        expertise: {type: array, items: {type: string}}
+    Supervision:
+      type: object
+      required: [studentId, teacherId, status]
+      properties:
+        studentId: {type: string, format: uuid}
+        teacherId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/SupervisionStatus'}
+        etab: {type: string}
+        requestedAt: {type: string, format: date-time}
+        respondedAt: {type: string, format: date-time}
+        assignedBy: {type: string, format: uuid}
+    SupervisionRequest:
+      type: object
+      additionalProperties: false
+      required: [teacherId]
+      properties:
+        teacherId: {type: string, format: uuid}
+    SupervisionRespondRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: {$ref: '#/components/schemas/SupervisionDecision'}
+    SupervisionAssignRequest:
+      type: object
+      additionalProperties: false
+      required: [teacherId]
+      properties:
+        teacherId: {type: string, format: uuid}
+
+    # ------------------------------------------------------------ journals
+    JournalEntry:
+      type: object
+      required: [studentId, week, content, submittedAt, validated]
+      properties:
+        studentId: {type: string, format: uuid}
+        week: {type: string, example: 2026-W42}
+        content: {type: string}
+        submittedAt: {type: string, format: date-time}
+        validated: {type: boolean}
+        validatedBy: {type: string}
+        validatedAt: {type: string, format: date-time}
+        comment: {type: string}
+    JournalEntryInput:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content: {type: string, minLength: 1, maxLength: 5000}
+    JournalValidateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        comment: {type: string, maxLength: 1000}
+
+    # ------------------------------------------------------------- reports
+    Report:
+      type: object
+      required: [studentId, version, status, submittedAt]
+      properties:
+        studentId: {type: string, format: uuid}
+        version: {type: integer, minimum: 1}
+        sha256: {type: string}
+        status: {$ref: '#/components/schemas/ReportStatus'}
+        companyId: {type: string, format: uuid}
+        teacherId: {type: string, format: uuid}
+        companyDecision: {$ref: '#/components/schemas/ReportDecision'}
+        teacherDecision: {$ref: '#/components/schemas/ReportDecision'}
+        companyComment: {type: string}
+        teacherComment: {type: string}
+        submittedAt: {type: string, format: date-time}
+    ReportReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: {$ref: '#/components/schemas/ReportDecision'}
+        comment: {type: string, maxLength: 2000, description: Mandatory when decision is CHANGES_REQUESTED}
+
+    # ------------------------------------------------------ notifications
+    Notification:
+      type: object
+      required: [id, createdAt, type, title, read]
+      properties:
+        id: {type: string, description: 'Sort key createdAt#id; URL-encode in paths'}
+        createdAt: {type: string, format: date-time}
+        type: {type: string}
+        title: {type: string}
+        body: {type: string}
+        refType: {type: string, example: CONVENTION}
+        refId: {type: string}
+        read: {type: boolean}
+
+    # -------------------------------------------------------------- verify
+    VerifyResult:
+      type: object
+      required: [verified, message]
+      properties:
+        verified: {type: boolean}
+        message: {type: string, example: Convention vérifiée et validée}
+        shortRef: {type: string}
+        approvedAt: {type: string, format: date-time}
+        etab: {type: string, description: Institution name}
+
+    # --------------------------------------------------------------- admin
+    AdminUserCreate:
+      type: object
+      additionalProperties: false
+      required: [email, password, role]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password, minLength: 8}
+        role: {$ref: '#/components/schemas/Role'}
+        etab: {type: string}
+        firstName: {type: string}
+        lastName: {type: string}
+        department: {type: string}
+        specialty: {type: string}
+        skills: {type: array, items: {type: string}}
+        gouvernorat: {type: string}
+        expertise: {type: array, items: {type: string}}
+        companyName: {type: string}
+    AdminUserUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        role: {$ref: '#/components/schemas/Role'}
+        etab: {type: string}
+        firstName: {type: string}
+        lastName: {type: string}
+        department: {type: string}
+        specialty: {type: string}
+        gouvernorat: {type: string}
+        companyName: {type: string}
+    Institution:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+    InstitutionInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1}
+    Department:
+      type: object
+      required: [id, etab, name]
+      properties:
+        id: {type: string, description: '{etabId}#{deptId}'}
+        etab: {type: string}
+        name: {type: string}
+    DepartmentInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        etab: {type: string, description: Required on creation}
+        name: {type: string, minLength: 1}
+    Specialty:
+      type: object
+      required: [id, department, name]
+      properties:
+        id: {type: string, description: '{deptId}#{specialtyId}'}
+        department: {type: string}
+        name: {type: string}
+        compatibleWith: {type: array, items: {type: string}}
+    SpecialtyInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        department: {type: string, description: Required on creation}
+        name: {type: string, minLength: 1}
+        compatibleWith: {type: array, items: {type: string}}
+
+    # --------------------------------------------------------------- pages
+    OfferPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Offer'}}
+        nextCursor: {type: string, nullable: true}
+    RecommendationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Recommendation'}}
+        nextCursor: {type: string, nullable: true}
+    ApplicationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Application'}}
+        nextCursor: {type: string, nullable: true}
+    ConventionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Convention'}}
+        nextCursor: {type: string, nullable: true}
+    TeacherPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/TeacherSummary'}}
+        nextCursor: {type: string, nullable: true}
+    SupervisionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Supervision'}}
+        nextCursor: {type: string, nullable: true}
+    JournalPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/JournalEntry'}}
+        nextCursor: {type: string, nullable: true}
+    ReportPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Report'}}
+        nextCursor: {type: string, nullable: true}
+    NotificationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Notification'}}
+        nextCursor: {type: string, nullable: true}
+    UserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/User'}}
+        nextCursor: {type: string, nullable: true}
+    InstitutionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Institution'}}
+        nextCursor: {type: string, nullable: true}
+    DepartmentPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Department'}}
+        nextCursor: {type: string, nullable: true}
+    SpecialtyPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Specialty'}}
+        nextCursor: {type: string, nullable: true}
