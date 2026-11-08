@@ -1,10 +1,24 @@
 import { Eye, EyeOff, LoaderCircle, MoveUpRight } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
+import ErrorBanner, { getErrorBanner } from "./ErrorBanner";
+import { api } from '../api'
+import { saveSession, homeFor } from '../auth'
 
 const SHOW_FORGOT_PASSWORD = false;
 const GOOGLE_ENABLED = false;
+const EMAIL_RE = /\S+@\S+\.\S+/;
+const FIELD_ORDER = ["email", "password"];
+
+function fieldError(k, v) {
+  if (k === "email") {
+    if (!v) return "L’adresse e-mail est obligatoire.";
+    if (!EMAIL_RE.test(v)) return "Saisissez une adresse e-mail valide.";
+    return "";
+  }
+  return v ? "" : "Le mot de passe est obligatoire.";
+}
 function Brand() {
   return (
     <Link to="/login" className="brand-mark">
@@ -34,36 +48,45 @@ const GoogleIcon = () => (
   </svg>
 );
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState("");
-  const emailError =
-    submitted &&
-    (!email
-      ? "L’adresse e-mail est obligatoire."
-      : !/\S+@\S+\.\S+/.test(email)
-        ? "Saisissez une adresse e-mail valide."
-        : "");
-  const passwordError =
-    submitted && !password ? "Le mot de passe est obligatoire." : "";
+  const [errors, setErrors] = useState({});
+  const [banner, setBanner] = useState(null);
+  const values = { email, password };
+
+  const clearField = (k) =>
+    setErrors((p) => (p[k] ? { ...p, [k]: "" } : p));
+  const blur = (k) =>
+    setErrors((p) => ({ ...p, [k]: fieldError(k, values[k]) }));
+
   async function submit(e) {
     e.preventDefault();
-    setSubmitted(true);
-    setError("");
-    if (emailError || passwordError) return;
+    if (loading) return;
+    setBanner(null);
+    const errs = {};
+    FIELD_ORDER.forEach((k) => {
+      const msg = fieldError(k, values[k]);
+      if (msg) errs[k] = msg;
+    });
+    setErrors(errs);
+    const first = FIELD_ORDER.find((k) => errs[k]);
+    if (first) {
+      document.getElementById(first)?.focus();
+      return;
+    }
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      const payload = { email, password };
-      /* TODO: remplacer par l’appel API. */ console.info(
-        "Connexion demandée",
-        payload,
-      );
-    } catch {
-      setError("Identifiants invalides");
+      const { token, user } = await api("/v1/auth/login", {
+        method: "POST",
+        body: { email: email.trim(), password },
+      });
+      saveSession({ token, user });
+      navigate(homeFor(user.role), { replace: true });
+    } catch (err) {
+      setBanner(getErrorBanner(err, "login"));
     } finally {
       setLoading(false);
     }
@@ -115,10 +138,12 @@ export default function Login() {
               Pas de compte ? <Link to="/signup">Créer un compte</Link>
             </p>
           </div>
-          {error && (
-            <div className="error-banner" role="alert">
-              {error}
-            </div>
+          {banner && (
+            <ErrorBanner
+              title={banner.title}
+              message={banner.message}
+              onClose={() => setBanner(null)}
+            />
           )}
           <form onSubmit={submit} noValidate>
             <div className="field-group">
@@ -127,10 +152,20 @@ export default function Login() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                aria-invalid={Boolean(emailError)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  clearField("email");
+                  setBanner(null);
+                }}
+                onBlur={() => blur("email")}
+                aria-invalid={errors.email ? "true" : undefined}
+                aria-describedby={errors.email ? "email-error" : undefined}
               />
-              {emailError && <p className="field-error">{emailError}</p>}
+              {errors.email && (
+                <p id="email-error" className="field-error">
+                  {errors.email}
+                </p>
+              )}
             </div>
             <div className="field-group">
               <div className="password-label-row">
@@ -144,8 +179,16 @@ export default function Login() {
                   id="password"
                   type={show ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  aria-invalid={Boolean(passwordError)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearField("password");
+                    setBanner(null);
+                  }}
+                  onBlur={() => blur("password")}
+                  aria-invalid={errors.password ? "true" : undefined}
+                  aria-describedby={
+                    errors.password ? "password-error" : undefined
+                  }
                 />
                 <button
                   className="password-toggle"
@@ -160,7 +203,11 @@ export default function Login() {
                   {show ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {passwordError && <p className="field-error">{passwordError}</p>}
+              {errors.password && (
+                <p id="password-error" className="field-error">
+                  {errors.password}
+                </p>
+              )}
             </div>
             <button className="submit-button" disabled={loading}>
               {loading ? (

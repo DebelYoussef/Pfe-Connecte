@@ -12,8 +12,24 @@ import {
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
+import ErrorBanner, { getErrorBanner } from "./ErrorBanner";
+import { api } from "../api";
+import { saveSession, homeFor } from "../auth";
 
 const GOOGLE_ENABLED = false;
+const FIELD_ORDER = [
+  "firstName",
+  "lastName",
+  "email",
+  "password",
+  "confirmPassword",
+  "etab",
+  "department",
+  "specialty",
+  "gouvernorat",
+  "companyName",
+  "accepted",
+];
 const skills = [
   "python",
   "java",
@@ -35,6 +51,14 @@ const roles = [
   ["ETU", "Étudiant", GraduationCap],
   ["ENT", "Entreprise", Building2],
   ["ENS", "Enseignant", School],
+];
+const ETABS = [
+  { value: "ETAB1", label: "Institut A" },
+  { value: "ETAB2", label: "Institut B" },
+];
+const DEPARTMENTS = [
+  { value: "INFO", label: "Informatique" },
+  { value: "TELECOM", label: "Télécommunications" },
 ];
 function Brand() {
   return (
@@ -64,17 +88,33 @@ const GoogleIcon = () => (
     />
   </svg>
 );
-function Select({ id, label, value, onChange, options, error }) {
+function Select({ id, label, value, onChange, onBlur, options, error }) {
   return (
     <div className="field-group">
       <label htmlFor={id}>{label}</label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+      >
         <option value="">Sélectionner</option>
-        {options.map((x) => (
-          <option key={x}>{x}</option>
-        ))}
+        {options.map((x) => {
+          const o = typeof x === "string" ? { value: x, label: x } : x;
+          return (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          );
+        })}
       </select>
-      {error && <p className="field-error">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="field-error">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -151,8 +191,18 @@ export default function Signup() {
   const [show, setShow] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const [errors, setErrors] = useState({});
+  const [emailTaken, setEmailTaken] = useState(false);
+  const [banner, setBanner] = useState(null);
+
+  const clearField = (k) =>
+    setErrors((p) => (p[k] ? { ...p, [k]: "" } : p));
+  const set = (k, v) => {
+    setF((x) => ({ ...x, [k]: v }));
+    clearField(k);
+    if (k === "email") setEmailTaken(false);
+    setBanner(null);
+  };
   const strength = useMemo(
     () =>
       f.password
@@ -176,26 +226,45 @@ export default function Signup() {
     if (f.password.length < 8) e.password = "Minimum 8 caractères.";
     if (f.confirmPassword !== f.password)
       e.confirmPassword = "Les mots de passe ne correspondent pas.";
-    if (role === "ETU" && !f.etab) e.etab = "L’établissement est obligatoire.";
+    if (role === "ETU") {
+      if (!f.etab) e.etab = "L’établissement est obligatoire.";
+      if (!f.department) e.department = "Le département est obligatoire.";
+      if (!f.specialty) e.specialty = "La spécialité est obligatoire.";
+      if (!f.gouvernorat) e.gouvernorat = "Le gouvernorat est obligatoire.";
+    }
     if (role === "ENT" && !f.companyName)
       e.companyName = "Le nom est obligatoire.";
     if (role === "ENS" && !f.etab) e.etab = "L’établissement est obligatoire.";
     if (!accepted) e.accepted = "Vous devez accepter les conditions.";
     return e;
   };
+  const blur = (k) => {
+    if (k === "email" && emailTaken) return;
+    const msg = validate()[k] || "";
+    setErrors((p) => ({ ...p, [k]: msg }));
+  };
+  const focusId = (k) =>
+    k === "etab" && role === "ENS" ? "teacher-etab" : k;
   async function submit(e) {
     e.preventDefault();
-    setSubmitted(true);
-    const errors = validate();
-    if (Object.keys(errors).length) return;
+    if (loading) return;
+    setBanner(null);
+    setEmailTaken(false);
+    const errs = validate();
+    setErrors(errs);
+    const first = FIELD_ORDER.find((k) => errs[k]);
+    if (first) {
+      document.getElementById(focusId(first))?.focus();
+      return;
+    }
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
+      const email = f.email.trim();
       const payload =
         role === "ETU"
           ? {
               role,
-              email: f.email,
+              email,
               password: f.password,
               firstName: f.firstName,
               lastName: f.lastName,
@@ -208,7 +277,7 @@ export default function Signup() {
           : role === "ENT"
             ? {
                 role,
-                email: f.email,
+                email,
                 password: f.password,
                 firstName: f.firstName,
                 lastName: f.lastName,
@@ -216,23 +285,35 @@ export default function Signup() {
               }
             : {
                 role,
-                email: f.email,
+                email,
                 password: f.password,
                 firstName: f.firstName,
                 lastName: f.lastName,
                 etab: f.etab,
                 expertise: f.expertise,
               };
-      /* TODO: remplacer par l’appel API. */ console.info(
-        "Inscription demandée",
-        payload,
-      );
+      const { token, user } = await api("/v1/auth/signup", {
+        method: "POST",
+        body: payload,
+      });
+      saveSession({ token, user });
+      navigate(homeFor(user.role), { replace: true });
+    } catch (err) {
+      if (err.status === 409 && err.code === "EMAIL_TAKEN") {
+        setEmailTaken(true);
+        setErrors((p) => ({
+          ...p,
+          email: "Cette adresse e-mail est déjà utilisée.",
+        }));
+        document.getElementById("email")?.focus();
+      }
+      setBanner(getErrorBanner(err, "signup"));
     } finally {
       setLoading(false);
     }
   }
   function field(k, label, type = "text") {
-    const err = submitted && validate()[k];
+    const err = errors[k];
     return (
       <div className="field-group">
         <label htmlFor={k}>{label}</label>
@@ -241,9 +322,15 @@ export default function Signup() {
           type={type}
           value={f[k]}
           onChange={(e) => set(k, e.target.value)}
-          aria-invalid={Boolean(err)}
+          onBlur={() => blur(k)}
+          aria-invalid={err ? "true" : undefined}
+          aria-describedby={err ? `${k}-error` : undefined}
         />
-        {err && <p className="field-error">{err}</p>}
+        {err && (
+          <p id={`${k}-error`} className="field-error">
+            {err}
+          </p>
+        )}
       </div>
     );
   }
@@ -294,6 +381,13 @@ export default function Signup() {
               Déjà inscrit ? <Link to="/login">Se connecter</Link>
             </p>
           </div>
+          {banner && (
+            <ErrorBanner
+              title={banner.title}
+              message={banner.message}
+              onClose={() => setBanner(null)}
+            />
+          )}
           <form onSubmit={submit} noValidate>
             <fieldset className="role-selector">
               <legend className="sr-only">Choisissez votre profil</legend>
@@ -302,7 +396,10 @@ export default function Signup() {
                   type="button"
                   key={v}
                   className={`role-card ${role === v ? "selected" : ""}`}
-                  onClick={() => setRole(v)}
+                  onClick={() => {
+                    setRole(v);
+                    setBanner(null);
+                  }}
                   aria-pressed={role === v}
                 >
                   <Icon size={18} />
@@ -324,6 +421,11 @@ export default function Signup() {
                   type={show ? "text" : "password"}
                   value={f.password}
                   onChange={(e) => set("password", e.target.value)}
+                  onBlur={() => blur("password")}
+                  aria-invalid={errors.password ? "true" : undefined}
+                  aria-describedby={
+                    errors.password ? "password-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -343,8 +445,10 @@ export default function Signup() {
                   />
                 ))}
               </div>
-              {submitted && validate().password && (
-                <p className="field-error">{validate().password}</p>
+              {errors.password && (
+                <p id="password-error" className="field-error">
+                  {errors.password}
+                </p>
               )}
             </div>
             <div className="field-group">
@@ -355,6 +459,11 @@ export default function Signup() {
                   type={showConfirm ? "text" : "password"}
                   value={f.confirmPassword}
                   onChange={(e) => set("confirmPassword", e.target.value)}
+                  onBlur={() => blur("confirmPassword")}
+                  aria-invalid={errors.confirmPassword ? "true" : undefined}
+                  aria-describedby={
+                    errors.confirmPassword ? "confirmPassword-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -364,8 +473,10 @@ export default function Signup() {
                   {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {submitted && validate().confirmPassword && (
-                <p className="field-error">{validate().confirmPassword}</p>
+              {errors.confirmPassword && (
+                <p id="confirmPassword-error" className="field-error">
+                  {errors.confirmPassword}
+                </p>
               )}
             </div>
             {role === "ETU" && (
@@ -375,8 +486,9 @@ export default function Signup() {
                   label="Établissement"
                   value={f.etab}
                   onChange={(v) => set("etab", v)}
-                  options={["Institut A", "Institut B"]}
-                  error={submitted && validate().etab}
+                  onBlur={() => blur("etab")}
+                  options={ETABS}
+                  error={errors.etab}
                 />
                 <div className="name-grid">
                   <Select
@@ -384,19 +496,23 @@ export default function Signup() {
                     label="Département"
                     value={f.department}
                     onChange={(v) => set("department", v)}
-                    options={["Informatique", "Télécommunications"]}
+                    onBlur={() => blur("department")}
+                    options={DEPARTMENTS}
+                    error={errors.department}
                   />
                   <Select
                     id="specialty"
                     label="Spécialité"
                     value={f.specialty}
                     onChange={(v) => set("specialty", v)}
+                    onBlur={() => blur("specialty")}
                     options={[
                       "Génie logiciel",
                       "Réseaux",
                       "Data science",
                       "Systèmes embarqués",
                     ]}
+                    error={errors.specialty}
                   />
                 </div>
                 <Select
@@ -404,6 +520,7 @@ export default function Signup() {
                   label="Gouvernorat"
                   value={f.gouvernorat}
                   onChange={(v) => set("gouvernorat", v)}
+                  onBlur={() => blur("gouvernorat")}
                   options={[
                     "Tunis",
                     "Sousse",
@@ -414,6 +531,7 @@ export default function Signup() {
                     "Gafsa",
                     "Bizerte",
                   ]}
+                  error={errors.gouvernorat}
                 />
                 <Tags
                   label="Compétences"
@@ -430,7 +548,9 @@ export default function Signup() {
                   label="Établissement"
                   value={f.etab}
                   onChange={(v) => set("etab", v)}
-                  options={["Institut A", "Institut B"]}
+                  onBlur={() => blur("etab")}
+                  options={ETABS}
+                  error={errors.etab}
                 />
                 <Tags
                   label="Domaines d’expertise"
@@ -442,14 +562,27 @@ export default function Signup() {
             )}
             <label className="terms-row">
               <input
+                id="accepted"
                 type="checkbox"
                 checked={accepted}
-                onChange={(e) => setAccepted(e.target.checked)}
+                onChange={(e) => {
+                  setAccepted(e.target.checked);
+                  clearField("accepted");
+                  setBanner(null);
+                }}
+                onBlur={() => blur("accepted")}
+                aria-invalid={errors.accepted ? "true" : undefined}
+                aria-describedby={errors.accepted ? "accepted-error" : undefined}
               />{" "}
               <span>
                 J’accepte les <Link to="/terms">conditions d’utilisation</Link>
               </span>
             </label>
+            {errors.accepted && (
+              <p id="accepted-error" className="field-error">
+                {errors.accepted}
+              </p>
+            )}
             <button className="submit-button" disabled={loading}>
               {loading ? (
                 <>
