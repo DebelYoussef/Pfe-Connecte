@@ -6,6 +6,16 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import StudentLayout from "./components/layout/StudentLayout";
 import Home from "./pages/student/Home";
 import Placeholder from "./pages/student/Placeholder";
+import LockedPage from "./components/LockedPage";
+import Offers from "./pages/student/Offers";
+import OfferDetail from "./pages/student/OfferDetail";
+import Applications from "./pages/student/Applications";
+import Convention from "./pages/student/Convention";
+import Supervisor from "./pages/student/Supervisor";
+import Journal from "./pages/student/Journal";
+import Report from "./pages/student/Report";
+import Notifications from "./pages/student/Notifications";
+import Profile from "./pages/student/Profile";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 
 function PublicOnly({ children }) {
@@ -66,15 +76,15 @@ export default function App() {
         }
       >
         <Route path="/student" element={<Home />} />
-        <Route path="/student/offres" element={<Placeholder />} />
-        <Route path="/student/offres/:offerId" element={<Placeholder />} />
-        <Route path="/student/candidatures" element={<Placeholder />} />
-        <Route path="/student/convention" element={<Placeholder />} />
-        <Route path="/student/encadrant" element={<Placeholder />} />
-        <Route path="/student/journal" element={<Placeholder />} />
-        <Route path="/student/rapport" element={<Placeholder />} />
-        <Route path="/student/notifications" element={<Placeholder />} />
-        <Route path="/student/profil" element={<Placeholder />} />
+        <Route path="/student/offres" element={<Offers />} />
+        <Route path="/student/offres/:offerId" element={<OfferDetail />} />
+        <Route path="/student/candidatures" element={<Applications />} />
+        <Route path="/student/convention" element={<Convention />} />
+        <Route path="/student/encadrant" element={<Supervisor />} />
+        <Route path="/student/journal" element={<Journal />} />
+        <Route path="/student/rapport" element={<Report />} />
+        <Route path="/student/notifications" element={<Notifications />} />
+        <Route path="/student/profil" element={<Profile />} />
       </Route>
       <Route
         path="/company"
