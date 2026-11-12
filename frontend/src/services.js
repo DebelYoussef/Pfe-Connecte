@@ -1,4 +1,6 @@
+import { getToken, getUser, saveSession } from "./auth";
 export const MOCK_SCENARIO = "supervised";
+// NOT IN API YET: workMode on applications (the mock copies it from the offer).
 const baseApplication = {
   studentId: "stu-1",
   offerId: "off-1",
@@ -234,25 +236,39 @@ scenarios.modified = {
       }),
   },
 };
+// Added: the Rapport page needs a state with a report already submitted.
+scenarios.reportReview = {
+  ...scenarios.supervised,
+  report: { version: 1, status: "UNDER_REVIEW" },
+};
 const wait = (data) =>
   new Promise((resolve) => setTimeout(() => resolve(data), 260));
 const current = () => scenarios[MOCK_SCENARIO] || scenarios.applying;
 let mockApplications = [...current().applications];
 let mockConvention = current().convention;
 let mockSupervision = current().supervision;
+// NOT IN API YET: profile extras the API does not store yet (kept in memory for the mock).
+// bio, contactEmail, avatarUrl, links, cvFileName, cvSize, cvUploadedAt (the API only stores cvKey).
+let mockProfileExtras = {
+  bio: "",
+  contactEmail: "",
+  avatarUrl: null,
+  links: { linkedin: "", github: "", portfolio: "" },
+  cvFileName: null,
+  cvSize: null,
+  cvUploadedAt: null,
+};
+let mockCvBlob = null;
 export async function getMe() {
-  const s = current();
+  // Real fields come from the logged-in user saved at sign-in (src/auth.js).
+  const session = getUser() || {};
   return wait({
     userId: "stu-1",
-    firstName: "Amine",
-    lastName: "Ben Salah",
     role: "ETU",
-    etab: "Institut A",
-    department: "Informatique",
-    specialty: "Génie logiciel",
-    email: "amine.bensalah@institut-a.tn",
-    skills: ["react", "typescript"],
-    gouvernorat: "Tunis",
+    ...session,
+    skills: session.skills || [],
+    ...mockProfileExtras,
+    links: { ...mockProfileExtras.links },
     activeCount: mockApplications.filter((item) =>
       ["PENDING", "VIEWED", "IN_PROGRESS", "ACCEPTED"].includes(item.status),
     ).length,
@@ -344,6 +360,7 @@ export async function applyToOffer(id) {
     offerTitle: offer?.title,
     companyName: offer?.companyName,
     gouvernorat: offer?.gouvernorat,
+    // NOT IN API YET: workMode.
     workMode: offer?.workMode,
   };
   mockApplications = [...mockApplications, item];
@@ -420,7 +437,13 @@ export async function saveConventionStudentInfo(
   { allowAfterSignature = false } = {},
 ) {
   const current = await getMyConvention();
-  if (!current) throw new Error("Convention introuvable");
+  if (!current)
+    throw {
+      status: 404,
+      code: "NOT_FOUND",
+      message: "Convention introuvable",
+      details: {},
+    };
   const profile = await getMe();
   const nextFields = {
     studentAddress: fields.studentAddress.trim(),
@@ -439,9 +462,13 @@ export async function saveConventionStudentInfo(
   );
   const hasSignatures = current.state === "APPROVED" || signedEvents.length > 0;
   if (hasSignatures && !allowAfterSignature)
-    throw new Error(
-      "Une modification est nécessaire pour modifier des informations déjà signées.",
-    );
+    throw {
+      status: 409,
+      code: "CONFLICT",
+      message:
+        "Une modification est nécessaire pour modifier des informations déjà signées.",
+      details: {},
+    };
   let events = [...(current.events || [])];
   let nextState = current.state;
   let currentActorId = current.currentActorId;
@@ -521,7 +548,12 @@ export async function signConvention(id) {
         event.actorRole === "ETU",
     )
   )
-    throw new Error("La convention ne peut pas être signée à cette étape.");
+    throw {
+      status: 409,
+      code: "CONFLICT",
+      message: "La convention ne peut pas être signée à cette étape.",
+      details: {},
+    };
   mockConvention = {
     ...mockConvention,
     state: "SIGNED_STUDENT",
@@ -594,7 +626,13 @@ export async function listTeachers({ etab, cursor } = {}) {
 }
 export async function requestSupervision(teacherId) {
   const teacher = teacherDirectory.find((item) => item.userId === teacherId);
-  if (!teacher) throw new Error("Cet enseignant n’est plus disponible.");
+  if (!teacher)
+    throw {
+      status: 404,
+      code: "NOT_FOUND",
+      message: "Cet enseignant n’est plus disponible.",
+      details: {},
+    };
   mockSupervision = {
     studentId: "stu-1",
     teacherId,
@@ -634,9 +672,12 @@ export async function listMyJournals() {
 export async function putJournalEntry(week, content) {
   const existing = mockJournals.find((item) => item.week === week);
   if (existing?.validated)
-    throw Object.assign(new Error("Cette entrée est déjà validée"), {
+    throw {
       status: 409,
-    });
+      code: "CONFLICT",
+      message: "Cette entrée est déjà validée",
+      details: {},
+    };
   const item = {
     studentId: "stu-1",
     week,
@@ -649,6 +690,16 @@ export async function putJournalEntry(week, content) {
   mockJournals = [...mockJournals.filter((entry) => entry.week !== week), item];
   return wait(item);
 }
+// NOT IN API YET: internship dates. The mock starts five weeks before the current week.
+export async function getInternshipPeriod() {
+  const today = new Date();
+  const start = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - 35,
+  );
+  return wait({ startDate: start.toISOString().slice(0, 10), endDate: null });
+}
 export async function listMyReports() {
   return wait({ items: mockReports, nextCursor: null });
 }
@@ -660,7 +711,12 @@ export async function createReportUploadUrl() {
     !mockSupervision ||
     !["ACCEPTED", "ASSIGNED"].includes(mockSupervision.status)
   )
-    throw Object.assign(new Error("Un encadrant est requis"), { status: 409 });
+    throw {
+      status: 409,
+      code: "CONFLICT",
+      message: "Un encadrant est requis",
+      details: {},
+    };
   return wait({
     url: "/mock-upload",
     fields: {},
@@ -668,8 +724,14 @@ export async function createReportUploadUrl() {
     expiresIn: 300,
   });
 }
+// Uploaded report files by version (the mock returns the real file in getReportPdfUrl).
+const mockReportBlobs = {};
 export async function getReportPdfUrl(version) {
-  return wait({ url: `#report-version-${version}`, expiresIn: 300 });
+  const blob = mockReportBlobs[version];
+  return wait({
+    url: blob ? URL.createObjectURL(blob) : `#report-version-${version}`,
+    expiresIn: 300,
+  });
 }
 export async function submitMockReport() {
   const version = mockReports.length + 1;
@@ -742,8 +804,43 @@ export async function markNotificationRead(id) {
   );
   return wait(mockNotifications.find((item) => item.id === id));
 }
+const PROFILE_API_FIELDS = [
+  "firstName",
+  "lastName",
+  "department",
+  "specialty",
+  "skills",
+  "gouvernorat",
+];
+// NOT IN API YET: bio, contactEmail, avatarUrl, links.
+const PROFILE_EXTRA_FIELDS = ["bio", "contactEmail", "avatarUrl", "links"];
+const pickFields = (source, keys) =>
+  Object.fromEntries(
+    keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
+  );
 export async function updateMe(partial) {
-  return wait({ ...(await getMe()), ...partial });
+  const apiFields = pickFields(partial, PROFILE_API_FIELDS);
+  const extraFields = pickFields(partial, PROFILE_EXTRA_FIELDS);
+  if ("firstName" in apiFields && !String(apiFields.firstName).trim())
+    throw {
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Le prénom est obligatoire.",
+      details: {},
+    };
+  if ("lastName" in apiFields && !String(apiFields.lastName).trim())
+    throw {
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Le nom est obligatoire.",
+      details: {},
+    };
+  // The real PUT /v1/me returns the updated User: keep the saved session in sync with it.
+  const token = getToken();
+  const session = getUser();
+  if (token && session) saveSession({ token, user: { ...session, ...apiFields } });
+  mockProfileExtras = { ...mockProfileExtras, ...extraFields };
+  return getMe();
 }
 export async function createCvUploadUrl() {
   return wait({
@@ -753,12 +850,131 @@ export async function createCvUploadUrl() {
     expiresIn: 300,
   });
 }
+// NOT IN API YET: download link for the student's own CV.
+export async function getCvDownloadUrl() {
+  return wait({
+    url: mockCvBlob ? URL.createObjectURL(mockCvBlob) : "#cv",
+    expiresIn: 300,
+  });
+}
+// NOT IN API YET: removing the CV.
+export async function deleteMyCv() {
+  mockCvBlob = null;
+  mockProfileExtras = {
+    ...mockProfileExtras,
+    cvFileName: null,
+    cvSize: null,
+    cvUploadedAt: null,
+  };
+  return getMe();
+}
 export async function createAvatarUploadUrl() {
   return wait({
     url: "/mock-avatar-upload",
     fields: {},
     key: "avatar/stu-1.png",
     expiresIn: 300,
+  });
+}
+// Uploads a file to a presigned POST ({ url, fields, key }) and reports progress (0-100).
+// Real URLs are sent as multipart/form-data; "/mock-…" URLs are simulated.
+export async function uploadToPresignedPost(
+  presigned,
+  file,
+  onProgress = () => {},
+) {
+  const { url, fields = {}, key = "" } = presigned;
+  if (url.startsWith("/mock")) return mockUpload(key, file, onProgress);
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    Object.entries(fields).forEach(([name, value]) => form.append(name, value));
+    form.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (event) =>
+      event.lengthComputable &&
+      onProgress(Math.round((event.loaded / event.total) * 100));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve({ key });
+      } else
+        reject({
+          status: xhr.status,
+          code: "UPLOAD_FAILED",
+          message: "Le fichier n’a pas pu être envoyé.",
+          details: {},
+        });
+    };
+    xhr.onerror = () =>
+      reject({
+        status: 0,
+        code: "NETWORK_ERROR",
+        message: "Serveur injoignable",
+        details: {},
+      });
+    xhr.send(form);
+  });
+}
+async function sha256Hex(file) {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+function mockUpload(key, file, onProgress) {
+  return new Promise((resolve) => {
+    let progress = 0;
+    const timer = setInterval(() => {
+      progress = Math.min(100, progress + 20);
+      onProgress(progress);
+      if (progress < 100) return;
+      clearInterval(timer);
+      if (key.startsWith("cv/")) {
+        mockCvBlob = file;
+        // NOT IN API YET: cvFileName, cvSize, cvUploadedAt (the API only stores cvKey).
+        mockProfileExtras = {
+          ...mockProfileExtras,
+          cvFileName: file.name,
+          cvSize: file.size,
+          cvUploadedAt: new Date().toISOString(),
+        };
+      }
+      if (key.startsWith("avatar/")) {
+        // NOT IN API YET: avatarUrl.
+        mockProfileExtras = {
+          ...mockProfileExtras,
+          avatarUrl: URL.createObjectURL(file),
+        };
+      }
+      if (key.startsWith("reports/")) {
+        // Simulates the S3 event that registers the new version a few seconds later.
+        setTimeout(async () => {
+          const version =
+            Math.max(0, ...mockReports.map((item) => item.version)) + 1;
+          mockReportBlobs[version] = file;
+          mockReports = [
+            {
+              studentId: "stu-1",
+              version,
+              sha256: await sha256Hex(file),
+              status: "UNDER_REVIEW",
+              companyId: mockConvention?.companyId || "co-1",
+              teacherId: mockSupervision?.teacherId || "teacher-1",
+              companyName: mockConvention?.companyName || "Atelier Digital",
+              teacherName: mockSupervision?.teacherName || "Nadia Mansour",
+              companyDecision: null,
+              teacherDecision: null,
+              companyComment: "",
+              teacherComment: "",
+              submittedAt: new Date().toISOString(),
+            },
+            ...mockReports,
+          ];
+        }, 4000);
+      }
+      resolve({ key });
+    }, 140);
   });
 }
 export async function getDeadline() {
