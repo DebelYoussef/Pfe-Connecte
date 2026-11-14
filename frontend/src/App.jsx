@@ -3,7 +3,7 @@ import Login from "./components/Login";
 import Signup from "./components/Signup";
 import CompleteProfile from "./components/CompleteProfile";
 import ProtectedRoute from "./components/ProtectedRoute";
-import CompanyLayout from "./components/CompanyLayout";
+import CompanyLayout from "./components/Company/CompanyLayout";
 import CompanyHome from "./components/Company/CompanyHome";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 

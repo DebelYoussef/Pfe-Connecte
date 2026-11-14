@@ -14,9 +14,9 @@ import {
   User,
   X,
 } from "lucide-react";
-import ThemeToggle from "./ThemeToggle";
-import { logout } from "../auth";
-import { getCompanyProfile, listCompanyNotifications } from "../services";
+import ThemeToggle from "../ThemeToggle";
+import { logout } from "../../auth";
+import { getCompanyProfile, listCompanyNotifications } from "../../services";
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
