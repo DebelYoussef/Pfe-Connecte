@@ -6,7 +6,7 @@ import {
   FileText,
   MessageSquareText,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EmptyState from "../../components/ui/EmptyState";
 import Skeleton from "../../components/ui/Skeleton";
@@ -68,9 +68,9 @@ function DecisionRow({ label, decision, comment }) {
 }
 
 function ReviewActions({ report, latest, onApprove, onRequestChanges }) {
-  const disabledReason = !latest
-    ? "Seule la dernière version peut être examinée."
-    : "Votre avis est déjà enregistré pour cette version.";
+  const disabledReason = report.teacherDecision
+    ? "Vous avez déjà donné votre avis"
+    : "En attente de la nouvelle version de l'étudiant";
   if (!latest || report.teacherDecision) {
     return (
       <div className="teacher-detail-actions">
@@ -105,7 +105,8 @@ function ReviewActions({ report, latest, onApprove, onRequestChanges }) {
 
 export default function TeacherStudentDetail() {
   const { studentId } = useParams();
-  const [activeTab, setActiveTab] = useState("journal");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "report" ? "report" : "journal";
   const [data, setData] = useState({
     loading: true,
     error: null,
@@ -282,7 +283,9 @@ export default function TeacherStudentDetail() {
               role="tab"
               aria-selected={activeTab === "journal"}
               className={activeTab === "journal" ? "active" : ""}
-              onClick={() => setActiveTab("journal")}
+              onClick={() => {
+                setSearchParams({}, { replace: true });
+              }}
             >
               Journal
             </button>
@@ -291,7 +294,9 @@ export default function TeacherStudentDetail() {
               role="tab"
               aria-selected={activeTab === "report"}
               className={activeTab === "report" ? "active" : ""}
-              onClick={() => setActiveTab("report")}
+              onClick={() => {
+                setSearchParams({ tab: "report" }, { replace: true });
+              }}
             >
               Rapport
             </button>

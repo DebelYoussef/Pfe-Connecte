@@ -110,9 +110,7 @@ export default function TeacherStudents() {
   }, [items, query, status]);
 
   const reviewCount = items.filter(
-    (student) =>
-      student.latestReport?.status === "UNDER_REVIEW" &&
-      !student.latestReport.teacherDecision,
+    (student) => student.latestReport && !student.latestReport.teacherDecision,
   ).length;
   const validatedCount = items.filter(
     (student) => student.latestReport?.status === "VALIDATED",

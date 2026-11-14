@@ -589,6 +589,53 @@ export async function reviewReport(studentId, version, { decision, comment = "" 
   return wait({ ...latest, teacherId: currentTeacherId() });
 }
 
+export async function reviewReportAsCompany(
+  studentId,
+  version,
+  { decision = "APPROVED", comment = "" } = {},
+) {
+  if (!["APPROVED", "CHANGES_REQUESTED"].includes(decision)) {
+    throw Object.assign(new Error("Décision de rapport invalide."), {
+      status: 400,
+    });
+  }
+  if (
+    decision === "CHANGES_REQUESTED" &&
+    (!comment.trim() || comment.length > 2000)
+  ) {
+    throw Object.assign(
+      new Error("Un commentaire de 1 à 2000 caractères est requis."),
+      { status: 400 },
+    );
+  }
+
+  const latest = latestReportFor(studentId);
+  if (
+    !latest ||
+    latest.version !== Number(version) ||
+    latest.companyDecision
+  ) {
+    throw Object.assign(
+      new Error("Cette version n’est plus en attente de l’avis de l’entreprise."),
+      { status: 409 },
+    );
+  }
+
+  latest.companyDecision = decision;
+  latest.companyComment =
+    decision === "CHANGES_REQUESTED" ? comment.trim() : "";
+  latest.status =
+    latest.companyDecision === "CHANGES_REQUESTED" ||
+    latest.teacherDecision === "CHANGES_REQUESTED"
+      ? "CHANGES_REQUESTED"
+      : latest.companyDecision === "APPROVED" &&
+          latest.teacherDecision === "APPROVED"
+        ? "VALIDATED"
+        : "UNDER_REVIEW";
+  notifyStoreChanged();
+  return wait({ ...latest, teacherId: currentTeacherId() });
+}
+
 export async function getReportPdfUrl(studentId, version) {
   const supervision = store.supervisions.find(
     (item) =>

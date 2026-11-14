@@ -115,8 +115,7 @@ export default function TeacherDashboard() {
       right.submittedAt.localeCompare(left.submittedAt),
     );
   const reportsToReview = latestReports.filter(
-    (report) =>
-      report.status === "UNDER_REVIEW" && !report.teacherDecision,
+    (report) => !report.teacherDecision,
   );
   const validatedReports = latestReports.filter(
     (report) => report.status === "VALIDATED",

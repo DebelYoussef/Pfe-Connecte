@@ -21,10 +21,10 @@ const labels = {
   CLOSED: "Fermée",
   FILLED: "Pourvue",
 };
-export default function StatusBadge({ status }) {
+export default function StatusBadge({ status, label }) {
   return (
     <span className={`status-badge status-${String(status).toLowerCase()}`}>
-      {labels[status] || status}
+      {label || labels[status] || status}
     </span>
   );
 }

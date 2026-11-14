@@ -1,30 +1,59 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EmptyState from "../../components/ui/EmptyState";
+import PageHeader from "../../components/ui/PageHeader";
 import Skeleton from "../../components/ui/Skeleton";
-import { listLatestTeacherReports } from "../../services.teacher";
+import StatusBadge from "../../components/ui/StatusBadge";
+import Toast from "../../components/ui/Toast";
+import {
+  listLatestTeacherReports,
+  reviewReport,
+  subscribeToTeacherData,
+} from "../../services.teacher";
 import "./teacherPages.css";
 
-const labels = {
-  UNDER_REVIEW: "À examiner",
-  VALIDATED: "Validé",
+const reportStatusLabels = {
+  UNDER_REVIEW: "En relecture",
   CHANGES_REQUESTED: "Modifications demandées",
+  VALIDATED: "Validé",
 };
-const options = ["Tous les statuts", ...Object.values(labels)];
+
+const statusOptions = [
+  { value: "ALL", label: "Tous les statuts" },
+  { value: "UNDER_REVIEW", label: "En relecture" },
+  { value: "CHANGES_REQUESTED", label: "Modifications demandées" },
+  { value: "VALIDATED", label: "Validé" },
+];
+
+function initials(name = "") {
+  const parts = name.trim().split(/\s+/).filter((part) => /\p{L}/u.test(part));
+  const value =
+    parts.length > 1
+      ? `${parts[0][0]}${parts[parts.length - 1][0]}`
+      : (parts[0] || "").slice(0, 2);
+  return value.toLocaleUpperCase("fr");
+}
+
+function decisionLabel(decision) {
+  if (decision === "APPROVED") return "Approuvé";
+  if (decision === "CHANGES_REQUESTED") return "Modifications demandées";
+  return "En attente";
+}
+
+function DecisionBadge({ decision }) {
+  return (
+    <StatusBadge
+      status={decision || "PENDING"}
+      label={decisionLabel(decision)}
+    />
+  );
+}
 
 function ReportStatus({ status }) {
-  const kind =
-    status === "UNDER_REVIEW"
-      ? "review"
-      : status === "VALIDATED"
-        ? "validated"
-        : "changes";
   return (
-    <span className={`rp-badge rp-badge-${kind}`}>
-      <i />
-      {labels[status]}
-    </span>
+    <StatusBadge status={status} label={reportStatusLabels[status]} />
   );
 }
 
@@ -33,7 +62,13 @@ export default function TeacherReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState(options[0]);
+  const [filter, setFilter] = useState("ALL");
+  const [tab, setTab] = useState("review");
+  const [confirmation, setConfirmation] = useState(null);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [toast, setToast] = useState("");
 
   const fetchItems = useCallback(() => listLatestTeacherReports(), []);
   const load = useCallback(async () => {
@@ -43,11 +78,19 @@ export default function TeacherReports() {
       const { items: reports } = await fetchItems();
       setItems(reports);
     } catch (loadError) {
-      setError(
-        loadError?.message || "Impossible de charger les rapports.",
-      );
+      setError(loadError?.message || "Impossible de charger les rapports.");
     } finally {
       setLoading(false);
+    }
+  }, [fetchItems]);
+
+  const refreshFromStore = useCallback(async () => {
+    try {
+      const { items: reports } = await fetchItems();
+      setItems(reports);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError?.message || "Impossible de charger les rapports.");
     }
   }, [fetchItems]);
 
@@ -58,8 +101,11 @@ export default function TeacherReports() {
         if (active) setItems(reports);
       })
       .catch((loadError) => {
-        if (active)
-          setError(loadError?.message || "Impossible de charger les rapports.");
+        if (active) {
+          setError(
+            loadError?.message || "Impossible de charger les rapports.",
+          );
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -69,20 +115,15 @@ export default function TeacherReports() {
     };
   }, [fetchItems]);
 
-  const filtered = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase("fr");
-    return items.filter((item) => {
-      const content = `${item.studentName} ${item.reportTitle} ${item.companyName}`;
-      return (
-        content.toLocaleLowerCase("fr").includes(term) &&
-        (filter === options[0] || labels[item.status] === filter)
-      );
-    });
-  }, [items, query, filter]);
+  useEffect(
+    () =>
+      subscribeToTeacherData(() => {
+        void refreshFromStore();
+      }),
+    [refreshFromStore],
+  );
 
-  const reviewCount = items.filter(
-    (item) => item.status === "UNDER_REVIEW" && !item.teacherDecision,
-  ).length;
+  const reviewCount = items.filter((item) => !item.teacherDecision).length;
   const validatedCount = items.filter(
     (item) => item.status === "VALIDATED",
   ).length;
@@ -90,7 +131,7 @@ export default function TeacherReports() {
     (item) => item.status === "CHANGES_REQUESTED",
   ).length;
   const stats = [
-    { label: "Rapports récents", count: items.length, type: "teal" },
+    { label: "Total", count: items.length, type: "teal" },
     { label: "À examiner", count: reviewCount, type: "gold" },
     { label: "Validés", count: validatedCount, type: "green" },
     {
@@ -100,24 +141,72 @@ export default function TeacherReports() {
     },
   ];
 
+  const filtered = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase("fr");
+    return items.filter((item) => {
+      const content =
+        `${item.studentName} ${item.reportTitle} ${item.companyName}`.toLocaleLowerCase(
+          "fr",
+        );
+      return (
+        content.includes(term) &&
+        (tab === "all" || !item.teacherDecision) &&
+        (filter === "ALL" || item.status === filter)
+      );
+    });
+  }, [items, query, filter, tab]);
+
+  async function submitReview() {
+    if (!confirmation) return;
+    setBusy(true);
+    setActionError("");
+    const decision = confirmation.decision;
+    try {
+      const updatedReport = await reviewReport(
+        confirmation.studentId,
+        confirmation.version,
+        {
+          decision,
+          comment: decision === "CHANGES_REQUESTED" ? comment : "",
+        },
+      );
+      setItems((current) =>
+        current.map((item) =>
+          item.studentId === updatedReport.studentId ? updatedReport : item,
+        ),
+      );
+      setConfirmation(null);
+      setComment("");
+      setToast(
+        decision === "APPROVED"
+          ? "Votre avis a été enregistré."
+          : "La demande de modifications a été envoyée.",
+      );
+    } catch (reviewError) {
+      setConfirmation(null);
+      setComment("");
+      if (reviewError?.status === 409) {
+        await load();
+        setActionError(
+          "Cette version a déjà été traitée. La liste a été actualisée.",
+        );
+      } else {
+        setActionError(
+          reviewError?.message || "La décision n’a pas pu être enregistrée.",
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <section className="rp-page student-page" aria-labelledby="rp-title">
-      <header className="rp-heading">
-        <div>
-          <span className="rp-eyebrow">ESPACE ENSEIGNANT</span>
-          <h1 id="rp-title">Rapports PFE</h1>
-          <p>
-            Consultez les dernières versions et accompagnez chaque étudiant
-            jusqu’à la validation finale.
-          </p>
-        </div>
-        <span className="rp-total">
-          <FileText size={18} />
-          {loading
-            ? "…"
-            : `${items.length} rapport${items.length !== 1 ? "s" : ""}`}
-        </span>
-      </header>
+    <section className="rp-page student-page" aria-label="Rapports PFE">
+      <PageHeader
+        eyebrow="Espace enseignant"
+        title="Rapports PFE"
+        subtitle="Relisez les rapports de vos étudiants. Un rapport est validé lorsque l'entreprise et vous l'approuvez."
+      />
 
       <div className="rp-stats">
         {stats.map(({ label, count, type }) => (
@@ -145,6 +234,29 @@ export default function TeacherReports() {
             </span>
           )}
         </header>
+
+        <div className="rp-tabs" role="tablist" aria-label="Filtrer les rapports">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "review"}
+            className={tab === "review" ? "active" : ""}
+            onClick={() => setTab("review")}
+          >
+            À examiner
+            <span>{reviewCount}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "all"}
+            className={tab === "all" ? "active" : ""}
+            onClick={() => setTab("all")}
+          >
+            Tous
+          </button>
+        </div>
+
         <div className="rp-toolbar">
           <label className="rp-search">
             <Search size={16} />
@@ -153,7 +265,7 @@ export default function TeacherReports() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Rechercher par étudiant, titre ou entreprise…"
-              aria-label="Rechercher un rapport"
+              aria-label="Rechercher un rapport par étudiant, titre ou entreprise"
             />
           </label>
           <label className="rp-filter">
@@ -161,14 +273,25 @@ export default function TeacherReports() {
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              aria-label="Filtrer par statut"
+              aria-label="Filtrer les rapports par statut"
             >
-              {options.map((option) => (
-                <option key={option}>{option}</option>
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </label>
         </div>
+
+        {actionError && (
+          <div className="teacher-zone-error" role="alert">
+            <span>{actionError}</span>
+            <button type="button" onClick={() => setActionError("")}>
+              Fermer
+            </button>
+          </div>
+        )}
 
         {error ? (
           <div className="teacher-zone-error" role="alert">
@@ -189,104 +312,158 @@ export default function TeacherReports() {
                 <tr>
                   <th>Étudiant</th>
                   <th>Titre du rapport</th>
+                  <th>Version</th>
                   <th>Date</th>
                   <th>Entreprise</th>
+                  <th>Avis de l'entreprise</th>
+                  <th>Mon avis</th>
                   <th>Statut</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((item) => (
-                  <tr key={`${item.studentId}-${item.version}`}>
-                    <td>
-                      <span className="rp-student">
-                        <span className="rp-avatar">
-                          {item.studentName
-                            .split(" ")
-                            .slice(-1)[0]
-                            .slice(-2)}
-                        </span>
-                        <strong>{item.studentName}</strong>
-                      </span>
-                    </td>
-                    <td className="rp-title-cell">{item.reportTitle}</td>
-                    <td>
-                      {new Intl.DateTimeFormat("fr-FR", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      }).format(new Date(item.submittedAt))}
-                    </td>
-                    <td>{item.companyName}</td>
-                    <td>
-                      <ReportStatus status={item.status} />
-                    </td>
-                    <td>
-                      <div className="rp-actions">
+                {filtered.map((item) => {
+                  const pending = !item.teacherDecision;
+                  return (
+                    <tr key={`${item.studentId}-${item.version}`}>
+                      <td>
                         <Link
-                          className="rp-consult"
+                          className="rp-student"
                           to={`/teacher/etudiants/${item.studentId}`}
                         >
-                          <Check size={14} />
-                          Examiner
+                          <span className="rp-avatar" aria-hidden="true">
+                            {initials(item.studentName)}
+                          </span>
+                          <strong>{item.studentName}</strong>
                         </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="rp-title-cell">{item.reportTitle}</td>
+                      <td>v{item.version}</td>
+                      <td>
+                        {new Intl.DateTimeFormat("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        }).format(new Date(item.submittedAt))}
+                      </td>
+                      <td>{item.companyName}</td>
+                      <td>
+                        <DecisionBadge decision={item.companyDecision} />
+                      </td>
+                      <td>
+                        <DecisionBadge decision={item.teacherDecision} />
+                      </td>
+                      <td>
+                        <ReportStatus status={item.status} />
+                      </td>
+                      <td>
+                        <div className="rp-actions">
+                          <Link
+                            className="rp-consult"
+                            to={`/teacher/etudiants/${item.studentId}?tab=report`}
+                          >
+                            <FileText size={14} />
+                            Consulter
+                          </Link>
+                          {pending && (
+                            <>
+                              <button
+                                className="rp-approve"
+                                type="button"
+                                onClick={() => {
+                                  setComment("");
+                                  setConfirmation({
+                                    ...item,
+                                    decision: "APPROVED",
+                                  });
+                                }}
+                              >
+                                <Check size={14} />
+                                Approuver
+                              </button>
+                              <button
+                                className="rp-request-changes"
+                                type="button"
+                                onClick={() => {
+                                  setComment("");
+                                  setConfirmation({
+                                    ...item,
+                                    decision: "CHANGES_REQUESTED",
+                                  });
+                                }}
+                              >
+                                Demander des modifications
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-            <div className="rp-mobile-list">
-              {filtered.map((item) => (
-                <article
-                  className="rp-mobile-card"
-                  key={`${item.studentId}-${item.version}-mobile`}
-                >
-                  <header>
-                    <span className="rp-avatar">
-                      {item.studentName
-                        .split(" ")
-                        .slice(-1)[0]
-                        .slice(-2)}
-                    </span>
-                    <div>
-                      <strong>{item.studentName}</strong>
-                      <span>{item.companyName}</span>
-                    </div>
-                    <ReportStatus status={item.status} />
-                  </header>
-                  <h3>{item.reportTitle}</h3>
-                  <p>
-                    Version {item.version} ·{" "}
-                    {new Intl.DateTimeFormat("fr-FR", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    }).format(new Date(item.submittedAt))}
-                  </p>
-                  <div className="rp-actions">
-                    <Link
-                      className="rp-consult"
-                      to={`/teacher/etudiants/${item.studentId}`}
-                    >
-                      Examiner
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
           </div>
         ) : (
           <EmptyState
-            title={items.length ? "Aucun rapport trouvé" : "Aucun rapport soumis"}
+            title={
+              items.length
+                ? "Aucun rapport trouvé"
+                : "Aucun rapport soumis"
+            }
             message={
               items.length
-                ? "Modifiez votre recherche ou le filtre de statut."
+                ? "Modifiez votre recherche, le filtre de statut ou l’onglet sélectionné."
                 : "Les dernières versions des rapports de vos étudiants apparaîtront ici."
             }
           />
         )}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={
+          confirmation?.decision === "APPROVED"
+            ? "Approuver ce rapport ?"
+            : "Demander des modifications ?"
+        }
+        body={
+          confirmation?.decision === "APPROVED"
+            ? "Votre avis sera enregistré pour la dernière version du rapport."
+            : "Indiquez les modifications attendues. Un commentaire est obligatoire."
+        }
+        confirmLabel={
+          busy
+            ? "Enregistrement…"
+            : confirmation?.decision === "APPROVED"
+              ? "Approuver"
+              : "Envoyer la demande"
+        }
+        confirmDisabled={
+          busy ||
+          (confirmation?.decision === "CHANGES_REQUESTED" && !comment.trim())
+        }
+        onCancel={() => {
+          setConfirmation(null);
+          setComment("");
+        }}
+        onConfirm={() => void submitReview()}
+      >
+        {confirmation?.decision === "CHANGES_REQUESTED" && (
+          <label className="teacher-review-comment">
+            <span>Commentaire requis</span>
+            <textarea
+              value={comment}
+              maxLength={2000}
+              rows={5}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Décrivez les modifications attendues…"
+            />
+            <small>{comment.length} / 2000</small>
+          </label>
+        )}
+      </ConfirmDialog>
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </section>
   );
 }
