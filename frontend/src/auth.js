@@ -12,6 +12,9 @@ const HOMES = {
 export function saveSession({ token, user }) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("pfe:session-updated"));
+  }
 }
 
 export function getToken() {

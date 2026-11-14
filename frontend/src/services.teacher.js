@@ -1,7 +1,11 @@
-import { getUser } from "./auth";
+import { api } from "./api";
+import { getToken, getUser, saveSession } from "./auth";
 import { isoWeek, weekEnd } from "./pages/student/parts/weeks";
+import { getMe, updateMe } from "./services";
 
 export const REAL = {
+  me: true,
+  expertise: true,
   supervisions: false,
   journals: false,
   reports: false,
@@ -14,6 +18,119 @@ export const MOCK_SCENARIO = "full";
 const delay = 40;
 const wait = (value) =>
   new Promise((resolve) => setTimeout(() => resolve(value), delay));
+
+const teacherProfileExtrasKey = (userId) => `profile-extras-${userId}`;
+const emptyTeacherProfileExtras = {
+  bio: "",
+  contactEmail: "",
+  avatarUrl: null,
+  links: { linkedin: "", github: "", portfolio: "" },
+};
+
+function readTeacherProfileExtras(userId) {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem(teacherProfileExtrasKey(userId)),
+    );
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function mockTeacherProfile() {
+  const user = getUser() || {};
+  const extras = {
+    ...emptyTeacherProfileExtras,
+    ...readTeacherProfileExtras(user.userId),
+  };
+  extras.links = {
+    ...emptyTeacherProfileExtras.links,
+    ...(extras.links || {}),
+  };
+  return wait({
+    ...user,
+    ...extras,
+    expertise: user.expertise || [],
+  });
+}
+
+async function mockUpdateTeacherProfile(partial) {
+  const user = getUser() || {};
+  const token = getToken();
+  const sessionFields = {};
+  if (partial.firstName !== undefined)
+    sessionFields.firstName = partial.firstName;
+  if (partial.lastName !== undefined)
+    sessionFields.lastName = partial.lastName;
+  if (token && Object.keys(sessionFields).length) {
+    saveSession({ token, user: { ...user, ...sessionFields } });
+  }
+
+  // NOT IN API YET: bio, contactEmail, avatarUrl, links.
+  const extras = {};
+  for (const key of ["bio", "contactEmail", "avatarUrl", "links"]) {
+    if (partial[key] !== undefined) extras[key] = partial[key];
+  }
+  if (Object.keys(extras).length) {
+    const current = readTeacherProfileExtras(user.userId);
+    localStorage.setItem(
+      teacherProfileExtrasKey(user.userId),
+      JSON.stringify({
+        ...emptyTeacherProfileExtras,
+        ...current,
+        ...extras,
+        links: {
+          ...emptyTeacherProfileExtras.links,
+          ...(current.links || {}),
+          ...(extras.links || {}),
+        },
+      }),
+    );
+  }
+  return mockTeacherProfile();
+}
+
+export async function getTeacherMe() {
+  const profile = REAL.me ? await getMe() : await mockTeacherProfile();
+  if (REAL.expertise) return profile;
+  return {
+    ...profile,
+    expertise: getUser()?.expertise ?? profile.expertise ?? [],
+  };
+}
+
+export async function updateTeacherMe(partial) {
+  return REAL.me ? updateMe(partial) : mockUpdateTeacherProfile(partial);
+}
+
+export async function updateTeacherExpertise(expertise) {
+  const values = expertise.map((item) => item.trim()).filter(Boolean);
+  if (!REAL.expertise) {
+    const user = getUser() || {};
+    const token = getToken();
+    if (token) saveSession({ token, user: { ...user, expertise: values } });
+    return getTeacherMe();
+  }
+
+  const updated = await api("/v1/teachers/me/expertise", {
+    method: "PUT",
+    body: { expertise: values },
+  });
+  const user = getUser();
+  const token = getToken();
+  if (token && user) {
+    saveSession({
+      token,
+      user: {
+        ...user,
+        ...(updated && typeof updated === "object" ? updated : {}),
+        expertise: updated?.expertise ?? values,
+      },
+    });
+  }
+  return getTeacherMe();
+}
 
 function mockPdfDataUrl(version) {
   const content = `BT /F1 14 Tf 50 750 Td (Rapport PFE - version ${version}) Tj ET`;

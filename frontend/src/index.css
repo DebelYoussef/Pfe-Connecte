@@ -3239,8 +3239,7 @@ h2 {
 }
 .student-content .ts-page,
 .student-content .rq-page,
-.student-content .rp-page,
-.student-content .pf-page {
+.student-content .rp-page {
   --card: var(--surface);
   --ink: var(--text);
   font-family: inherit;
@@ -3248,22 +3247,17 @@ h2 {
 }
 .student-content .ts-heading h1,
 .student-content .rq-heading h1,
-.student-content .rp-heading h1,
-.student-content .pf-heading h1 {
+.student-content .rp-heading h1 {
   font: 600 38px/1.1 var(--serif);
 }
 .student-content .ts-heading p,
 .student-content .rq-heading p,
-.student-content .rp-heading p,
-.student-content .pf-heading p {
+.student-content .rp-heading p {
   font-size: 15px;
 }
 .student-content .ts-stat-label,
 .student-content .rq-stat > div > span,
-.student-content .rp-stat > div > span,
-.student-content .pf-field > span:first-child,
-.student-content .pf-field input,
-.student-content .pf-field textarea {
+.student-content .rp-stat > div > span {
   font-size: 13px;
 }
 .student-content .ts-status,
@@ -3272,8 +3266,7 @@ h2 {
   font-size: 11px;
 }
 .student-content .rq-actions button,
-.student-content .rp-actions button,
-.student-content .pf-button {
+.student-content .rp-actions button {
   min-height: 38px;
   padding-inline: 12px;
   font-size: 13px;

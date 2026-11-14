@@ -1,5 +1,5 @@
 import { Lock, LogOut, Menu } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { getUser, logout } from "../../auth";
 import { NotificationsProvider, useNotifications } from "../../context/NotificationsContext";
@@ -29,8 +29,8 @@ function ShellContent({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [user, setUser] = useState(() => getUser() || {});
   const navigate = useNavigate();
-  const user = getUser() || {};
   const fullName =
     [user.firstName, user.lastName].filter(Boolean).join(" ") ||
     user.email ||
@@ -39,6 +39,13 @@ function ShellContent({
   const notifications = useNotifications();
   const basePath = profilePath.replace(/\/profil\/?$/, "");
   const notificationsPath = `${basePath}/notifications`;
+
+  useEffect(() => {
+    const refreshUser = () => setUser(getUser() || {});
+    window.addEventListener("pfe:session-updated", refreshUser);
+    return () =>
+      window.removeEventListener("pfe:session-updated", refreshUser);
+  }, []);
 
   function confirmLogout() {
     logout();
