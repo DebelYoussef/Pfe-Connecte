@@ -1,0 +1,650 @@
+.ts-page {
+  padding-bottom: 34px;
+  color: var(--text);
+}
+
+.rq-eyebrow,
+.rp-eyebrow {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ts-count {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.ts-stats,
+.rq-stats,
+.rp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.ts-stat,
+.rq-stat,
+.rp-stat {
+  display: flex;
+  min-width: 0;
+  min-height: 82px;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.ts-stat-icon,
+.rq-stat-icon,
+.rp-stat-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--primary);
+}
+
+.ts-stat-gold .ts-stat-icon,
+.rq-stat-gold .rq-stat-icon,
+.rp-stat-gold .rp-stat-icon {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+
+.ts-stat-green .ts-stat-icon,
+.rq-stat-green .rq-stat-icon,
+.rp-stat-green .rp-stat-icon {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+
+.ts-stat-slate .ts-stat-icon,
+.rp-stat-slate .rp-stat-icon {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+
+.rq-stat-rose .rq-stat-icon {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.ts-stat > div,
+.rq-stat > div,
+.rp-stat > div {
+  min-width: 0;
+}
+
+.ts-stat-label,
+.rq-stat > div > span,
+.rp-stat > div > span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ts-stat strong,
+.rq-stat strong,
+.rp-stat strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.ts-list,
+.rq-list,
+.rp-list {
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.ts-list-heading,
+.rq-list-heading,
+.rp-list-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ts-list-heading h2,
+.rq-list-heading h2,
+.rp-list-heading h2 {
+  margin: 6px 0 0;
+  font: 550 23px/1.2 var(--serif);
+}
+
+.ts-result-count,
+.rq-results,
+.rp-results {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ts-toolbar,
+.rq-toolbar,
+.rp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+
+.ts-search,
+.rq-search,
+.rp-search {
+  display: flex;
+  width: min(100%, 440px);
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.ts-search:focus-within,
+.rq-search:focus-within,
+.rp-search:focus-within {
+  border-color: var(--primary);
+}
+
+.ts-search input,
+.rq-search input,
+.rp-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.ts-search input::placeholder,
+.rq-search input::placeholder,
+.rp-search input::placeholder {
+  color: var(--muted);
+}
+
+.ts-filter,
+.rq-filter,
+.rp-filter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ts-filter select,
+.rq-filter select,
+.rp-filter select {
+  min-height: 42px;
+  max-width: 240px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.ts-grid,
+.rq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ts-card,
+.rq-card {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.16s ease;
+}
+
+.ts-card {
+  display: block;
+}
+
+.ts-card:hover,
+.rq-card:hover {
+  border-color: var(--primary);
+}
+
+.ts-card-header,
+.rq-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.rq-card-heading .status-badge {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.rq-expertise {
+  display: inline-flex !important;
+  width: fit-content;
+  margin-top: 10px !important;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  color: var(--primary) !important;
+  font-size: 11px !important;
+  font-weight: 550;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.ts-avatar,
+.rq-avatar,
+.rp-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ts-student-name,
+.rq-person {
+  min-width: 0;
+  flex: 1;
+}
+
+.ts-student-name h3,
+.rq-person h3 {
+  overflow: hidden;
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-student-name span,
+.rq-person > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ts-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ts-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ts-status-progress {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}
+
+.ts-status-review {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}
+
+.ts-status-validated {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+  color: var(--primary);
+}
+
+.ts-status-changes {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  color: var(--danger);
+}
+
+.ts-card-subject,
+.rq-subject {
+  margin: 16px 0 13px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.ts-card-subject > span,
+.rq-subject > span,
+.ts-card-footer small,
+.rq-meta small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ts-card-subject > span,
+.rq-subject > span {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ts-card-subject strong,
+.rq-subject strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+}
+
+.ts-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ts-card-footer > span {
+  min-width: 0;
+}
+
+.ts-card-footer strong,
+.rq-meta b {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.ts-card-footer > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.rq-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rq-actions,
+.rp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.rq-actions button,
+.rp-actions a {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.rq-actions .rq-accept {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+
+.rq-actions .rq-decline {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--danger);
+}
+
+.rp-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rp-table {
+  width: 100%;
+  min-width: 1420px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.rp-table th {
+  padding: 11px 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rp-table td {
+  padding: 13px 9px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.rp-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rp-student {
+  display: flex;
+  min-width: 140px;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.rp-student:hover strong {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.rp-title-cell {
+  min-width: 190px;
+  max-width: 280px;
+}
+
+.rp-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rp-tabs button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rp-tabs button.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.rp-tabs button span {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--text);
+  font-size: 11px;
+}
+
+.ts-empty {
+  padding: 34px 0;
+}
+
+@media (max-width: 900px) {
+  .ts-stats,
+  .rq-stats,
+  .rp-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rp-table th,
+  .rp-table td {
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+}
+
+@media (max-width: 680px) {
+  .ts-toolbar,
+  .rq-toolbar,
+  .rp-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ts-search,
+  .rq-search,
+  .rp-search {
+    width: 100%;
+  }
+
+  .ts-filter,
+  .rq-filter,
+  .rp-filter {
+    justify-content: space-between;
+  }
+
+  .ts-filter select,
+  .rq-filter select,
+  .rp-filter select {
+    flex: 1;
+    max-width: none;
+  }
+
+  .ts-grid,
+  .rq-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ts-list,
+  .rq-list,
+  .rp-list {
+    padding: 17px;
+  }
+
+  .rp-table {
+    display: table;
+  }
+}
+
+.rp-actions a,
+.rp-actions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rp-actions .rp-approve {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+
+.rp-actions .rp-request-changes {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-card,
+  .rq-card {
+    transition: none;
+  }
+}

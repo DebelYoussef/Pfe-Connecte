@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import Tooltip from "../../../components/ui/Tooltip";
 import { chip, focusRing, input as inputClass, tone } from "./ui";
 
+// eslint-disable-next-line react-refresh/only-export-components -- Shared by the profile forms.
 export const normalizeSkill = (value) =>
   value
     .normalize("NFD")
@@ -11,7 +12,14 @@ export const normalizeSkill = (value) =>
     .trim()
     .replace(/\s+/g, " ");
 
-export default function SkillTagEditor({ values, onChange, suggestions = [], max = 10, inputId }) {
+export default function SkillTagEditor({
+  values,
+  onChange,
+  suggestions = [],
+  max = 10,
+  maxLabel = "compétences",
+  inputId,
+}) {
   const [text, setText] = useState("");
   const [message, setMessage] = useState("");
   const hintId = useId();
@@ -26,7 +34,7 @@ export default function SkillTagEditor({ values, onChange, suggestions = [], max
       return;
     }
     if (full) {
-      setMessage(`${max} compétences maximum`);
+      setMessage(`${max} ${maxLabel} maximum`);
       return;
     }
     setMessage("");

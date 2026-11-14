@@ -1,64 +1,495 @@
-import { useMemo, useState } from 'react'
-import './teacher.css'
-import TeacherStudents from './TeacherStudents'
-import TeacherRequests from './TeacherRequests'
-import TeacherReports from './TeacherReports'
-import TeacherNotifications from './TeacherNotifications'
-import TeacherProfile from './TeacherProfile'
-import { useNavigate } from 'react-router-dom'
-import { logout } from '../../auth'
-import { getCurrentTeacher } from './currentTeacher'
-import { Bell, BookOpen, Check, ChevronRight, ClipboardCheck, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, Moon, MoreHorizontal, Search, Settings, Sun, UserRound, Users, X } from 'lucide-react'
-import { activities, reports as initialReports, requests as initialRequests, students } from '../../data/teacherMockData'
+import {
+  ArrowRight,
+  Bell,
+  Check,
+  ChevronRight,
+  FileText,
+  GraduationCap,
+  UsersRound,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { getUser } from "../../auth";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import EmptyState from "../../components/ui/EmptyState";
+import Skeleton from "../../components/ui/Skeleton";
+import StatusBadge from "../../components/ui/StatusBadge";
+import Toast from "../../components/ui/Toast";
+import { useNotifications } from "../../context/NotificationsContext";
+import {
+  listMySupervisions,
+  listTeacherStudents,
+  respondToSupervision,
+} from "../../services.teacher";
 
-const navItems = [
-  { label: 'Tableau de bord', icon: LayoutDashboard }, { label: 'Mes étudiants', icon: Users }, { label: "Demandes d'encadrement", icon: GraduationCap }, { label: 'Rapports PFE', icon: FileText }, { label: 'Notifications', icon: Bell }, { label: 'Mon profil', icon: UserRound },
-]
-const statusLabels = { UNDER_REVIEW: 'À examiner', CHANGES_REQUESTED: 'Modifications demandées', VALIDATED: 'Validé', REQUESTED: 'En attente', ACCEPTED: 'Acceptée', DECLINED: 'Refusée' }
-
-function Avatar({ initials, color = '#dbeceb' }) { return <span className="teacher-avatar" style={{ background: color }}>{initials}</span> }
-function Status({ value }) { return <span className={`teacher-status status-${value.toLowerCase()}`}><span />{statusLabels[value] || value}</span> }
-
-export default function TeacherDashboard() {
-  const navigate = useNavigate()
-  const teacher = useMemo(() => getCurrentTeacher(), [])
-  const [active, setActive] = useState('Tableau de bord')
-  const [unread, setUnread] = useState(3)
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('Tous les statuts')
-  const [requests, setRequests] = useState(initialRequests)
-  const [reportData, setReportData] = useState(initialReports)
-  const [dark, setDark] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [noticeOpen, setNoticeOpen] = useState(false)
-  const filteredStudents = useMemo(() => students.filter((s) => `${s.name} ${s.subject} ${s.company}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'Tous les statuts' || s.status === filter)), [query, filter])
-
-  function handleLogout() { logout(); navigate('/login', { replace: true }) }
-  function handleRequest(id, status) { setRequests((items) => items.map((item) => item.id === id ? { ...item, status } : item)) }
-  function handleReport(id, status) { setReportData((items) => items.map((item) => item.id === id ? { ...item, status } : item)) }
-
-  return <div className={`teacher-shell ${dark ? 'teacher-dark' : ''}`}>
-    <aside className={`teacher-sidebar ${menuOpen ? 'open' : ''}`}>
-      <div className="teacher-brand"><span className="teacher-brand-mark">P</span><span>PFE <b>Connect</b></span></div>
-      <div className="sidebar-label">ESPACE ENSEIGNANT</div>
-      <nav>{navItems.map(({ label, icon: Icon }) => <button className={active === label ? 'nav-active' : ''} key={label} onClick={() => { setActive(label); setMenuOpen(false) }}><Icon size={17} /><span>{label}</span>{label === 'Notifications' && unread > 0 && <em>{unread}</em>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="profile-mini"><Avatar initials={teacher.initials} color="#e9dcbf" /><div><strong>{teacher.name}</strong><small>{teacher.email}</small></div></div><button className="logout" onClick={handleLogout}><LogOut size={16} />Se déconnecter</button></div>
-    </aside>
-    <main className="teacher-main">
-      <header className="teacher-header"><button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Ouvrir le menu"><Menu size={21} /></button><div className="breadcrumb"><span>Espace enseignant</span><ChevronRight size={14} /><b>{active}</b></div><div className="header-actions"><div className="top-search"><Search size={16} /><input aria-label="Rechercher" placeholder="Rechercher une information" /></div><button className="icon-btn notification-button" onClick={() => setNoticeOpen(!noticeOpen)} aria-label="Notifications"><Bell size={18} /><i /></button><button className="icon-btn" onClick={() => setDark(!dark)} aria-label="Changer de thème">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><Avatar initials={teacher.initials} color="#e9dcbf" />{noticeOpen && <div className="notification-popover"><strong>Notifications</strong><p>3 nouvelles notifications</p><p>Demande de Lina Saïdi</p></div>}</div></header>
-      {active === 'Mes étudiants' ? <div className="teacher-content"><TeacherStudents /></div> : active === "Demandes d'encadrement" ? <div className="teacher-content"><TeacherRequests /></div> : active === 'Rapports PFE' ? <div className="teacher-content"><TeacherReports /></div> : <div className="teacher-content" hidden={active !== 'Tableau de bord'}>
-        <section className="teacher-welcome"><div><span className="teacher-eyebrow">ESPACE ENSEIGNANT</span><h1>Bonjour, {teacher.firstName}</h1><p>Suivez vos étudiants et accompagnez-les jusqu'à la réussite de leur projet de fin d'études.</p></div><div className="welcome-stamp"><ClipboardCheck size={28} /><span>Année universitaire<br /><b>2024 — 2025</b></span></div></section>
-        <section className="teacher-stats">{[[Users, 'Étudiants encadrés', '24', '3 nouveaux ce mois'], [GraduationCap, 'Demandes en attente', '3', 'À traiter rapidement'], [FileText, 'Rapports à examiner', '5', '2 reçus cette semaine'], [Check, 'Rapports validés', '16', 'Cette année']].map(([Icon, label, value, detail], i) => <article key={label} className={`stat-card stat-${i}`}><div className="stat-icon"><Icon size={18} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><MoreHorizontal size={17} className="stat-more" /></article>)}</section>
-        <div className="teacher-grid"><div className="teacher-left">
-          <section className="dashboard-section"><div className="section-heading"><div><span className="teacher-eyebrow">VOTRE SUIVI</span><h2>Mes étudiants</h2></div><button className="text-link" onClick={() => setActive('Mes étudiants')} aria-label="Voir tous les étudiants">Voir tous <ChevronRight size={15} /></button></div><div className="table-toolbar"><div className="field-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un étudiant..." /></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option>Tous les statuts</option><option>En cours</option><option>Rapport à examiner</option><option>Validé</option><option>En attente</option></select></div><div className="table-wrap"><table><thead><tr><th>Étudiant</th><th>Sujet PFE</th><th>Entreprise</th><th>Spécialité</th><th>Statut</th><th /></tr></thead><tbody>{filteredStudents.map((student) => <tr key={student.id}><td><div className="person-cell"><Avatar initials={student.initials} color={student.color} /><strong>{student.name}</strong></div></td><td className="subject-cell">{student.subject}</td><td>{student.company}</td><td>{student.specialty}</td><td><Status value={student.status === 'En cours' ? 'ACCEPTED' : student.status === 'Validé' ? 'VALIDATED' : student.status === 'Rapport à examiner' ? 'UNDER_REVIEW' : 'REQUESTED'} /></td><td><button className="row-action" aria-label={`Voir ${student.name}`} onClick={() => alert(`Dossier de ${student.name}`)}><ChevronRight size={17} /></button></td></tr>)}</tbody></table></div><div className="table-footer"><span>Affichage de {filteredStudents.length} étudiants sur 24</span><div><button className="page-button">‹</button><button className="page-button active-page">1</button><button className="page-button">2</button><button className="page-button">›</button></div></div></section>
-          <section className="dashboard-section requests-section"><div className="section-heading"><div><span className="teacher-eyebrow">À DÉCIDER</span><h2>Demandes d'encadrement</h2></div><button className="text-link" onClick={() => setActive("Demandes d'encadrement")}>Voir toutes <ChevronRight size={15} /></button></div><div className="request-list">{requests.map((request) => <div className="request-row" key={request.id}><Avatar initials={request.initials} color="#e4e9e7" /><div className="request-info"><strong>{request.name}</strong><span>{request.specialty} · {request.subject}</span><small>{request.institution} · {request.date}</small></div>{request.status === 'REQUESTED' ? <div className="request-actions"><button className="btn-accept" onClick={() => handleRequest(request.id, 'ACCEPTED')}><Check size={14} />Accepter</button><button className="btn-decline" onClick={() => handleRequest(request.id, 'DECLINED')}><X size={14} />Refuser</button></div> : <Status value={request.status} />}</div>)}</div></section>
-          <section className="dashboard-section"><div className="section-heading"><div><span className="teacher-eyebrow">DOCUMENTS RÉCENTS</span><h2>Rapports PFE</h2></div><button className="text-link" onClick={() => setActive('Rapports PFE')}>Voir tous <ChevronRight size={15} /></button></div><div className="table-wrap"><table><thead><tr><th>Étudiant</th><th>Titre du rapport</th><th>Date</th><th>Entreprise</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{reportData.map((report) => <tr key={report.id}><td><div className="person-cell"><Avatar initials={report.initials} color="#e7e8e2" /><strong>{report.student}</strong></div></td><td className="subject-cell">{report.title}</td><td>{report.date}</td><td>{report.company}</td><td><Status value={report.status} /></td><td><button className="report-action" onClick={() => report.status === 'UNDER_REVIEW' ? handleReport(report.id, 'VALIDATED') : handleReport(report.id, 'CHANGES_REQUESTED')}>{report.status === 'UNDER_REVIEW' ? 'Valider' : 'Consulter'}</button></td></tr>)}</tbody></table></div></section>
-        </div><TeacherRightPanel /></div>
-      </div>}
-      <div className="teacher-content" hidden={active !== 'Notifications'}><TeacherNotifications onUnreadChange={setUnread} /></div>
-      <div className="teacher-content" hidden={active !== 'Mon profil'}><TeacherProfile /></div>
-    </main>
-  </div>
+function useZone(loader) {
+  const [state, setState] = useState({
+    loading: true,
+    error: null,
+    items: [],
+  });
+  const reload = useCallback(async () => {
+    setState((current) => ({ ...current, loading: true, error: null }));
+    try {
+      const result = await loader();
+      setState({
+        loading: false,
+        error: null,
+        items: Array.isArray(result) ? result : result.items,
+      });
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        loading: false,
+        error:
+          error?.message ||
+          "Une erreur est survenue lors du chargement des données.",
+      }));
+    }
+  }, [loader]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  return { ...state, reload };
 }
 
-function TeacherRightPanel() { return <aside className="teacher-right"><section className="side-card"><div className="side-title"><h3>À traiter</h3><span>8</span></div><div className="todo-item"><span className="todo-dot gold" /><div><strong>Demandes d'encadrement</strong><small>3 nouvelles demandes</small></div><ChevronRight size={15} /></div><div className="todo-item"><span className="todo-dot teal" /><div><strong>Rapports à examiner</strong><small>5 rapports en attente</small></div><ChevronRight size={15} /></div></section><section className="side-card"><div className="side-title"><h3>Activité récente</h3><button>Tout voir</button></div>{activities.map((activity) => <div className="activity-item" key={activity.title}><span className={`activity-icon ${activity.type}`}><FileText size={14} /></span><div><strong>{activity.title}</strong><small>{activity.text}</small><em>{activity.time}</em></div></div>)}</section><section className="reminder-card"><span className="teacher-eyebrow">PROCHAIN RAPPEL</span><h3>Journée de soutenance</h3><p>Préparation des jurys et calendriers</p><div className="reminder-date"><strong>27</strong><span>JUIN<br /><b>2025</b></span></div><button>Voir le calendrier <ChevronRight size={15} /></button></section></aside> }
+function ZoneError({ error, onRetry }) {
+  return (
+    <div className="teacher-zone-error" role="alert">
+      <span>{error || "Impossible de charger cette section."}</span>
+      <button type="button" onClick={onRetry}>
+        Réessayer
+      </button>
+    </div>
+  );
+}
+
+function ZoneSkeleton({ lines = 3 }) {
+  return (
+    <div className="teacher-zone-skeleton" aria-label="Chargement">
+      {Array.from({ length: lines }, (_, index) => (
+        <Skeleton key={index} />
+      ))}
+    </div>
+  );
+}
+
+function studentStatus(student) {
+  if (!student.latestReport) return "En cours";
+  if (student.latestReport.status === "CHANGES_REQUESTED")
+    return "Modifications demandées";
+  if (student.latestReport.status === "VALIDATED") return "Validé";
+  return "Rapport à examiner";
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(value));
+}
+
+const loadSupervisions = () => listMySupervisions();
+const loadStudents = () => listTeacherStudents();
+
+export default function TeacherDashboard() {
+  const user = getUser() || {};
+  const firstName =
+    user.firstName || user.email?.split("@")[0] || "";
+  const supervisions = useZone(loadSupervisions);
+  const students = useZone(loadStudents);
+  const notifications = useNotifications();
+  const [confirmation, setConfirmation] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [toast, setToast] = useState("");
+  const closeToast = useCallback(() => setToast(""), []);
+  const requests = supervisions.items.filter(
+    (item) => item.status === "REQUESTED",
+  );
+  const latestReports = students.items
+    .map((student) => student.latestReport)
+    .filter(Boolean)
+    .sort((left, right) =>
+      right.submittedAt.localeCompare(left.submittedAt),
+    );
+  const reportsToReview = latestReports.filter(
+    (report) => !report.teacherDecision,
+  );
+  const validatedReports = latestReports.filter(
+    (report) => report.status === "VALIDATED",
+  );
+
+  async function confirmSupervisionResponse() {
+    if (!confirmation) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      await respondToSupervision(
+        confirmation.studentId,
+        confirmation.decision,
+      );
+      await Promise.all([supervisions.reload(), students.reload()]);
+      setToast(
+        confirmation.decision === "ACCEPTED"
+          ? "Demande acceptée."
+          : "Demande refusée.",
+      );
+      setConfirmation(null);
+    } catch (error) {
+      setActionError(
+        error?.message || "La réponse à la demande a échoué.",
+      );
+      setConfirmation(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const stats = [
+    {
+      label: "Étudiants encadrés",
+      value: students.items.length,
+      icon: UsersRound,
+      to: "/teacher/etudiants",
+      loading: students.loading,
+      error: students.error,
+    },
+    {
+      label: "Demandes en attente",
+      value: requests.length,
+      icon: GraduationCap,
+      to: "/teacher/demandes",
+      loading: supervisions.loading,
+      error: supervisions.error,
+    },
+    {
+      label: "Rapports à examiner",
+      value: reportsToReview.length,
+      icon: FileText,
+      to: "/teacher/rapports",
+      loading: students.loading,
+      error: students.error,
+    },
+    {
+      label: "Rapports validés",
+      value: validatedReports.length,
+      icon: Check,
+      to: "/teacher/rapports",
+      loading: students.loading,
+      error: students.error,
+    },
+  ];
+
+  return (
+    <section className="student-page teacher-dashboard">
+      <section className="teacher-dashboard-hero">
+        <div>
+          <p className="eyebrow">Espace enseignant</p>
+          <h1>{firstName ? `Bonjour, ${firstName}` : "Bonjour"}</h1>
+          <p>Retrouvez en un coup d’œil les suivis et décisions à traiter.</p>
+        </div>
+        <span className="teacher-dashboard-hero-icon" aria-hidden="true">
+          <GraduationCap size={27} />
+        </span>
+      </section>
+
+      <div className="teacher-dashboard-stats">
+        {stats.map(({ label, value, icon: Icon, to, loading, error }) => (
+          <Link
+            className="teacher-dashboard-stat interactive"
+            to={to}
+            key={label}
+          >
+            <span className="teacher-dashboard-stat-icon">
+              <Icon size={18} />
+            </span>
+            <span>
+              <small>{label}</small>
+              {loading ? (
+                <Skeleton />
+              ) : error ? (
+                <strong aria-label="Indisponible">—</strong>
+              ) : (
+                <strong>{value}</strong>
+              )}
+            </span>
+            <ChevronRight size={16} />
+          </Link>
+        ))}
+      </div>
+      {(supervisions.error || students.error) && (
+        <ZoneError
+          error={supervisions.error || students.error}
+          onRetry={() =>
+            void Promise.all([supervisions.reload(), students.reload()])
+          }
+        />
+      )}
+
+      <div className="teacher-dashboard-layout">
+        <div className="teacher-dashboard-main">
+          <section className="teacher-dashboard-card">
+            <header>
+              <div>
+                <p className="eyebrow">VOTRE PORTEFEUILLE</p>
+                <h2>Mes étudiants</h2>
+              </div>
+              <Link to="/teacher/etudiants">
+                Voir tous <ChevronRight size={15} />
+              </Link>
+            </header>
+            {students.error ? (
+              <ZoneError error={students.error} onRetry={students.reload} />
+            ) : students.loading ? (
+              <ZoneSkeleton />
+            ) : students.items.length ? (
+              <ul>
+                {students.items.slice(0, 4).map((student) => (
+                  <li key={student.studentId}>
+                    <Link
+                      className="teacher-dashboard-row-link"
+                      to={`/teacher/etudiants/${student.studentId}`}
+                    >
+                      <span>
+                        <strong>{student.studentName}</strong>
+                        <small>{student.subjectTitle}</small>
+                      </span>
+                      <span className="teacher-dashboard-row-end">
+                        {studentStatus(student)}
+                        <ArrowRight size={15} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                title="Aucun étudiant encadré"
+                message="Les étudiants qui vous sont confiés apparaîtront ici."
+              />
+            )}
+          </section>
+
+          <section className="teacher-dashboard-card">
+            <header>
+              <div>
+                <p className="eyebrow">À DÉCIDER</p>
+                <h2>Demandes d’encadrement</h2>
+              </div>
+              <Link to="/teacher/demandes">
+                Voir toutes <ChevronRight size={15} />
+              </Link>
+            </header>
+            {supervisions.error ? (
+              <ZoneError
+                error={supervisions.error}
+                onRetry={supervisions.reload}
+              />
+            ) : supervisions.loading ? (
+              <ZoneSkeleton lines={2} />
+            ) : requests.length ? (
+              <ul>
+                {requests.slice(0, 4).map((request) => (
+                  <li key={request.studentId}>
+                    <span className="teacher-request-preview">
+                      <strong>{request.studentName}</strong>
+                      <small>{request.subjectTitle}</small>
+                      <small>Reçue le {formatDate(request.requestedAt)}</small>
+                    </span>
+                    <span className="teacher-request-preview-actions">
+                      <button
+                        type="button"
+                        aria-label={`Accepter la demande de ${request.studentName}`}
+                        onClick={() =>
+                          setConfirmation({
+                            studentId: request.studentId,
+                            studentName: request.studentName,
+                            decision: "ACCEPTED",
+                          })
+                        }
+                      >
+                        <Check size={15} />
+                        Accepter
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Refuser la demande de ${request.studentName}`}
+                        onClick={() =>
+                          setConfirmation({
+                            studentId: request.studentId,
+                            studentName: request.studentName,
+                            decision: "DECLINED",
+                          })
+                        }
+                      >
+                        <X size={15} />
+                        Refuser
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                title="Aucune demande en attente"
+                message="Les nouvelles demandes d’encadrement apparaîtront ici."
+              />
+            )}
+            {actionError && (
+              <div className="teacher-zone-error" role="alert">
+                {actionError}
+                <button
+                  type="button"
+                  onClick={() => setActionError("")}
+                >
+                  Fermer
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="teacher-dashboard-card">
+            <header>
+              <div>
+                <p className="eyebrow">DOCUMENTS</p>
+                <h2>Rapports PFE</h2>
+              </div>
+              <Link to="/teacher/rapports">
+                Voir tous <ChevronRight size={15} />
+              </Link>
+            </header>
+            {students.error ? (
+              <ZoneError error={students.error} onRetry={students.reload} />
+            ) : students.loading ? (
+              <ZoneSkeleton />
+            ) : latestReports.length ? (
+              <ul>
+                {latestReports.slice(0, 4).map((report) => (
+                  <li key={`${report.studentId}-${report.version}`}>
+                    <Link
+                      className="teacher-dashboard-row-link"
+                      to={`/teacher/etudiants/${report.studentId}`}
+                    >
+                      <span>
+                        <strong>{report.studentName}</strong>
+                        <small>{report.reportTitle}</small>
+                      </span>
+                      <span className="teacher-dashboard-row-end">
+                        <StatusBadge status={report.status} />
+                        <ArrowRight size={15} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                title="Aucun rapport soumis"
+                message="Les rapports de vos étudiants apparaîtront ici."
+              />
+            )}
+          </section>
+        </div>
+
+        <aside className="teacher-dashboard-side">
+          <section className="teacher-dashboard-card">
+            <header>
+              <div>
+                <p className="eyebrow">SUIVI</p>
+                <h2>À traiter</h2>
+              </div>
+            </header>
+            {supervisions.error || students.error ? (
+              <ZoneError
+                error={supervisions.error || students.error}
+                onRetry={() =>
+                  void Promise.all([
+                    supervisions.reload(),
+                    students.reload(),
+                  ])
+                }
+              />
+            ) : supervisions.loading || students.loading ? (
+              <ZoneSkeleton lines={3} />
+            ) : (
+              <ul className="teacher-dashboard-todo">
+                <li>
+                  <Link to="/teacher/demandes">
+                    <span><GraduationCap size={17} />Demandes d’encadrement</span>
+                    <strong>{requests.length}</strong>
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/teacher/rapports">
+                    <span><FileText size={17} />Rapports à examiner</span>
+                    <strong>{reportsToReview.length}</strong>
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/teacher/notifications">
+                    <span><Bell size={17} />Notifications non lues</span>
+                    <strong>{notifications?.unreadCount || 0}</strong>
+                  </Link>
+                </li>
+              </ul>
+            )}
+          </section>
+
+          <section className="teacher-dashboard-card">
+            <header>
+              <div>
+                <p className="eyebrow">ACTIVITÉ RÉCENTE</p>
+                <h2>Dernières notifications</h2>
+              </div>
+              <Link to="/teacher/notifications" aria-label="Toutes les notifications">
+                Voir tout <ChevronRight size={15} />
+              </Link>
+            </header>
+            {(notifications?.items || []).length ? (
+              <ul>
+                {(notifications?.items || []).slice(0, 5).map((item) => (
+                  <li key={item.id}>
+                    <Link
+                      className="teacher-dashboard-activity"
+                      to="/teacher/notifications"
+                    >
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>{item.body}</small>
+                      </span>
+                      <small>{formatDate(item.createdAt)}</small>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                title="Aucune activité récente"
+                message="Les dernières notifications apparaîtront ici."
+              />
+            )}
+          </section>
+        </aside>
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={
+          confirmation?.decision === "ACCEPTED"
+            ? "Accepter cette demande ?"
+            : "Refuser cette demande ?"
+        }
+        body={`Confirmez votre réponse à la demande de ${confirmation?.studentName || ""}.`}
+        confirmLabel={
+          confirmation?.decision === "ACCEPTED" ? "Accepter" : "Refuser"
+        }
+        confirmDisabled={busy}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={confirmSupervisionResponse}
+      />
+      {toast && <Toast message={toast} onClose={closeToast} />}
+    </section>
+  );
+}

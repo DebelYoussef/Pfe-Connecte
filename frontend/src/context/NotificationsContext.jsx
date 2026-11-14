@@ -6,45 +6,53 @@ import {
   useMemo,
   useState,
 } from "react";
-import { listNotifications, markNotificationRead } from "../services";
+import {
+  listNotifications as listStudentNotifications,
+  markNotificationRead as markStudentNotificationRead,
+} from "../services";
 const Context = createContext(null);
-export function NotificationsProvider({ children }) {
+const studentService = {
+  listNotifications: listStudentNotifications,
+  markNotificationRead: markStudentNotificationRead,
+};
+
+export function NotificationsProvider({ children, service = studentService }) {
   const [items, setItems] = useState([]);
   const load = useCallback(
-    () => listNotifications().then((data) => setItems(data.items)),
-    [],
+    () => service.listNotifications().then((data) => setItems(data.items)),
+    [service],
   );
   useEffect(() => {
     load();
   }, [load]);
   const unread = items.filter((item) => !item.read).length;
-  const markRead = async (id) => {
-    await markNotificationRead(id);
-    setItems(
-      items.map((item) => (item.id === id ? { ...item, read: true } : item)),
+  const markRead = useCallback(async (id) => {
+    await service.markNotificationRead(id);
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, read: true } : item)),
     );
-  };
-  const markAll = async () => {
+  }, [service]);
+  const markAll = useCallback(async () => {
     await Promise.all(
       items
         .filter((item) => !item.read)
-        .map((item) => markNotificationRead(item.id)),
+        .map((item) => service.markNotificationRead(item.id)),
     );
-    setItems(items.map((item) => ({ ...item, read: true })));
-  };
+    setItems((current) => current.map((item) => ({ ...item, read: true })));
+  }, [items, service]);
+  const value = useMemo(
+    () => ({
+      items,
+      unread,
+      unreadCount: unread,
+      markRead,
+      markAll,
+      refresh: load,
+    }),
+    [items, unread, markRead, markAll, load],
+  );
   return (
-    <Context.Provider
-      value={{
-        items,
-        unread,
-        unreadCount: unread,
-        markRead,
-        markAll,
-        refresh: load,
-      }}
-    >
-      {children}
-    </Context.Provider>
+    <Context.Provider value={value}>{children}</Context.Provider>
   );
 }
 export function useNotifications() {
