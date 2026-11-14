@@ -1,4 +1,18 @@
 import { getToken, getUser, saveSession } from "./auth";
+import { api } from "./api";
+
+// REAL/MOCK SWITCH. true = real API (src/api.js), false = the previous mock, per group.
+// Flip one group back to false if something breaks. Edit it here: the mock state below is built
+// once at load time.
+const REAL = {
+  me: true, // getMe, updateMe
+  offers: true, // listOffers, getOffer
+  applications: true, // applyToOffer, listMyApplications, actOnApplication (withdraw, decline)
+  recommendations: true, // listMyRecommendations
+};
+// "confirm" stays MOCKED: the conventions backend does not exist yet (the applications Lambda
+// answers 400 "confirm is handled by the conventions service"). Set to true once it exists.
+const REAL_CONFIRM = false;
 export const MOCK_SCENARIO = "supervised";
 // NOT IN API YET: workMode on applications (the mock copies it from the offer).
 const baseApplication = {
@@ -243,7 +257,12 @@ scenarios.reportReview = {
 };
 const wait = (data) =>
   new Promise((resolve) => setTimeout(() => resolve(data), 260));
-const current = () => scenarios[MOCK_SCENARIO] || scenarios.applying;
+// While real applications are on, the student has no internship: every remaining mock (convention,
+// supervision, journals, reports, notifications) starts from the "new" scenario so the Convention,
+// Encadrant, Journal and Rapport pages show their locked state. With REAL.applications = false,
+// MOCK_SCENARIO works exactly as before.
+const SCENARIO = REAL.applications ? "new" : MOCK_SCENARIO;
+const current = () => scenarios[SCENARIO] || scenarios.applying;
 let mockApplications = [...current().applications];
 let mockConvention = current().convention;
 let mockSupervision = current().supervision;
@@ -259,7 +278,7 @@ let mockProfileExtras = {
   cvUploadedAt: null,
 };
 let mockCvBlob = null;
-export async function getMe() {
+async function mockGetMe() {
   // Real fields come from the logged-in user saved at sign-in (src/auth.js).
   const session = getUser() || {};
   return wait({
@@ -275,7 +294,7 @@ export async function getMe() {
   });
 }
 // NOT IN API YET: the mock offers include workMode until the API exposes it.
-const offers = [
+const mockOffers = [
   {
     rank: 1,
     offerId: "off-1",
@@ -337,20 +356,20 @@ const offers = [
     },
   },
 ];
-export async function listMyRecommendations() {
-  return wait({ items: offers, nextCursor: null });
+async function mockListMyRecommendations() {
+  return wait({ items: mockOffers, nextCursor: null });
 }
-export async function listOffers() {
-  return wait({ items: offers.map((item) => item.offer), nextCursor: null });
+async function mockListOffers() {
+  return wait({ items: mockOffers.map((item) => item.offer), nextCursor: null });
 }
-export async function getOffer(id) {
-  return wait(offers.find((item) => item.offerId === id)?.offer || null);
+async function mockGetOffer(id) {
+  return wait(mockOffers.find((item) => item.offerId === id)?.offer || null);
 }
-export async function listMyApplications() {
+async function mockListMyApplications() {
   return wait({ items: mockApplications, nextCursor: null });
 }
-export async function applyToOffer(id) {
-  const offer = offers.find((item) => item.offerId === id)?.offer;
+async function mockApplyToOffer(id) {
+  const offer = mockOffers.find((item) => item.offerId === id)?.offer;
   const item = {
     studentId: "stu-1",
     offerId: id,
@@ -366,7 +385,7 @@ export async function applyToOffer(id) {
   mockApplications = [...mockApplications, item];
   return wait(item);
 }
-export async function actOnApplication(id, action) {
+async function mockActOnApplication(id, action) {
   const status = {
     withdraw: "WITHDRAWN",
     decline: "DECLINED",
@@ -753,7 +772,7 @@ export async function submitMockReport() {
   mockReports = [item, ...mockReports];
   return wait(item);
 }
-let mockNotifications = [
+const allMockNotifications = [
   {
     id: "2026-11-10#1",
     createdAt: "2026-11-10T09:00:00Z",
@@ -795,6 +814,11 @@ let mockNotifications = [
     read: true,
   },
 ];
+// Real applications on: the student has no application nor convention, so only the profile
+// reminder stays coherent.
+let mockNotifications = REAL.applications
+  ? allMockNotifications.filter((item) => item.type === "REMINDER")
+  : allMockNotifications;
 export async function listNotifications() {
   return wait({ items: mockNotifications, nextCursor: null });
 }
@@ -818,7 +842,7 @@ const pickFields = (source, keys) =>
   Object.fromEntries(
     keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
   );
-export async function updateMe(partial) {
+async function mockUpdateMe(partial) {
   const apiFields = pickFields(partial, PROFILE_API_FIELDS);
   const extraFields = pickFields(partial, PROFILE_EXTRA_FIELDS);
   if ("firstName" in apiFields && !String(apiFields.firstName).trim())
@@ -840,7 +864,7 @@ export async function updateMe(partial) {
   const session = getUser();
   if (token && session) saveSession({ token, user: { ...session, ...apiFields } });
   mockProfileExtras = { ...mockProfileExtras, ...extraFields };
-  return getMe();
+  return mockGetMe();
 }
 export async function createCvUploadUrl() {
   return wait({
@@ -860,12 +884,7 @@ export async function getCvDownloadUrl() {
 // NOT IN API YET: removing the CV.
 export async function deleteMyCv() {
   mockCvBlob = null;
-  mockProfileExtras = {
-    ...mockProfileExtras,
-    cvFileName: null,
-    cvSize: null,
-    cvUploadedAt: null,
-  };
+  patchProfileExtras({ cvFileName: null, cvSize: null, cvUploadedAt: null });
   return getMe();
 }
 export async function createAvatarUploadUrl() {
@@ -933,19 +952,15 @@ function mockUpload(key, file, onProgress) {
       if (key.startsWith("cv/")) {
         mockCvBlob = file;
         // NOT IN API YET: cvFileName, cvSize, cvUploadedAt (the API only stores cvKey).
-        mockProfileExtras = {
-          ...mockProfileExtras,
+        patchProfileExtras({
           cvFileName: file.name,
           cvSize: file.size,
           cvUploadedAt: new Date().toISOString(),
-        };
+        });
       }
       if (key.startsWith("avatar/")) {
         // NOT IN API YET: avatarUrl.
-        mockProfileExtras = {
-          ...mockProfileExtras,
-          avatarUrl: URL.createObjectURL(file),
-        };
+        patchProfileExtras({ avatarUrl: URL.createObjectURL(file) });
       }
       if (key.startsWith("reports/")) {
         // Simulates the S3 event that registers the new version a few seconds later.
@@ -979,4 +994,347 @@ function mockUpload(key, file, onProgress) {
 }
 export async function getDeadline() {
   return wait({ deadline: "2027-02-15", deadlineEnabled: true });
+}
+
+// ============================================================================
+// REAL API LAYER (everything the REAL switch at the top controls).
+// api() errors ({ status, code, message, details }) are NOT caught here, except when a list row
+// is enriched with its offer: a missing offer must not break the whole list.
+// ============================================================================
+const enc = encodeURIComponent;
+
+// "?a=1&b=2" without empty values. encodeURIComponent keeps spaces as %20 ("Ben Arous"),
+// URLSearchParams would send "+".
+function qs(params) {
+  const parts = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}=${enc(String(value))}`);
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
+const sessionExpired = () => ({
+  status: 401,
+  code: "UNAUTHORIZED",
+  message: "Session expirée",
+  details: {},
+});
+
+// ---- Profile extras ---------------------------------------------------------
+// NOT IN API YET: bio, contactEmail, avatarUrl, links, cvFileName, cvSize, cvUploadedAt.
+// Stored in localStorage under profile-extras-{userId} and merged back by getMe().
+const EXTRA_DEFAULTS = {
+  bio: "",
+  contactEmail: "",
+  avatarUrl: null,
+  links: { linkedin: "", github: "", portfolio: "" },
+  cvFileName: null,
+  cvSize: null,
+  cvUploadedAt: null,
+};
+const EXTRA_KEYS = Object.keys(EXTRA_DEFAULTS);
+const extrasKey = (userId) => `profile-extras-${userId}`;
+// blob: URLs (mock avatar upload) die on reload: kept in memory only, never persisted.
+const volatileExtras = {};
+
+function readStoredExtras(userId) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(extrasKey(userId)));
+    return parsed && typeof parsed === "object" ? pickFields(parsed, EXTRA_KEYS) : {};
+  } catch {
+    return {};
+  }
+}
+
+function readExtras(userId) {
+  const merged = {
+    ...EXTRA_DEFAULTS,
+    ...readStoredExtras(userId),
+    ...volatileExtras[userId],
+  };
+  merged.links = { ...EXTRA_DEFAULTS.links, ...(merged.links || {}) };
+  return merged;
+}
+
+function patchExtras(userId, patch) {
+  const fields = pickFields(patch, EXTRA_KEYS);
+  const stored = readStoredExtras(userId);
+  const volatile = { ...volatileExtras[userId] };
+  for (const [key, value] of Object.entries(fields)) {
+    delete volatile[key];
+    if (typeof value === "string" && value.startsWith("blob:")) {
+      volatile[key] = value;
+      stored[key] = null;
+    } else {
+      stored[key] = value;
+    }
+  }
+  volatileExtras[userId] = volatile;
+  try {
+    localStorage.setItem(extrasKey(userId), JSON.stringify(stored));
+  } catch {
+    // Storage full or blocked: keep the extras in memory for this page load.
+    volatileExtras[userId] = { ...volatile, ...fields };
+  }
+}
+
+// Used by the mocked CV / avatar uploads so they keep working while REAL.me is on.
+function patchProfileExtras(patch) {
+  if (REAL.me) return patchExtras(getUser()?.userId ?? "unknown", patch);
+  mockProfileExtras = { ...mockProfileExtras, ...patch };
+}
+
+// Keeps the saved session in sync (sidebar name and avatar). Token unchanged.
+function syncSession(real, extras) {
+  const token = getToken();
+  if (!token) return;
+  const session = getUser();
+  const next = { ...(session || {}), ...real, avatarUrl: extras.avatarUrl };
+  if (JSON.stringify(next) !== JSON.stringify(session)) saveSession({ token, user: next });
+}
+
+function buildMe(real) {
+  const extras = readExtras(real.userId);
+  syncSession(real, extras);
+  return {
+    ...real,
+    skills: real.skills ?? [],
+    activeCount: real.activeCount ?? 0,
+    ...extras,
+  };
+}
+
+function assertProfileNames(fields) {
+  if ("firstName" in fields && !String(fields.firstName).trim())
+    throw {
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Le prénom est obligatoire.",
+      details: {},
+    };
+  if ("lastName" in fields && !String(fields.lastName).trim())
+    throw {
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Le nom est obligatoire.",
+      details: {},
+    };
+}
+
+async function realGetMe() {
+  return buildMe(await api("/v1/me"));
+}
+
+async function realUpdateMe(partial = {}) {
+  // The contract is additionalProperties: false: only the API fields go to PUT /v1/me.
+  const apiFields = pickFields(partial, PROFILE_API_FIELDS);
+  const extraFields = pickFields(partial, PROFILE_EXTRA_FIELDS);
+  assertProfileNames(apiFields);
+  // An empty PUT is a 400 ("No fields to update"): extras-only updates read the profile instead.
+  const real = Object.keys(apiFields).length
+    ? await api("/v1/me", { method: "PUT", body: apiFields })
+    : await api("/v1/me");
+  if (Object.keys(extraFields).length) patchExtras(real.userId, extraFields);
+  return buildMe(real);
+}
+
+// ---- Offers -------------------------------------------------------------------
+// The API has no companyName and no workMode on offers.
+function adaptOffer(offer) {
+  if (!offer) return offer;
+  return {
+    ...offer,
+    companyName: offer.companyName ?? "Entreprise", // NOT IN API YET
+    workMode: offer.workMode ?? null, // NOT IN API YET
+    keywords: offer.keywords ?? [],
+    skills: offer.skills ?? [],
+  };
+}
+
+// offerId -> Promise of the adapted offer (in memory, for the page lifetime). Failed lookups are
+// not kept, so the next call tries again.
+const offerCache = new Map();
+function fetchOfferCached(offerId) {
+  if (!offerCache.has(offerId)) {
+    offerCache.set(
+      offerId,
+      api(`/v1/offers/${enc(offerId)}`).then(adaptOffer, () => {
+        offerCache.delete(offerId);
+        return null;
+      }),
+    );
+  }
+  return offerCache.get(offerId);
+}
+
+const fold = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+const asList = (value) => (Array.isArray(value) ? value : value ? [value] : []);
+const toNum = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
+};
+
+// Client-side filters on the returned page (the API only filters by gouvernorat).
+// The accepted names are the usual ones; unknown names are ignored. Adjust the aliases if the
+// page uses other names.
+function filterOffers(items, f) {
+  const text = fold(f.q ?? f.search ?? f.query ?? f.text);
+  const skills = asList(f.skills ?? f.skill).map(fold).filter(Boolean);
+  const modes = asList(f.workMode ?? f.mode)
+    .map((mode) => String(mode).toUpperCase())
+    .filter((mode) => mode && mode !== "ALL");
+  const exact = toNum(f.durationWeeks ?? f.duration);
+  const min = toNum(f.minDuration ?? f.durationMin);
+  const max = toNum(f.maxDuration ?? f.durationMax);
+  return items.filter((offer) => {
+    if (text) {
+      const haystack = fold(
+        [
+          offer.title,
+          offer.description,
+          offer.companyName,
+          offer.gouvernorat,
+          ...offer.keywords,
+          ...offer.skills,
+        ].join(" "),
+      );
+      if (!haystack.includes(text)) return false;
+    }
+    if (skills.length) {
+      const have = offer.skills.map(fold);
+      if (!skills.some((skill) => have.includes(skill))) return false;
+    }
+    // NOT IN API YET: workMode is null on real offers. An unknown mode is kept, otherwise
+    // choosing a mode would empty the list.
+    if (modes.length && offer.workMode && !modes.includes(offer.workMode)) return false;
+    const weeks = offer.durationWeeks;
+    if (exact !== null && weeks !== exact) return false;
+    if (min !== null && !(weeks >= min)) return false;
+    if (max !== null && !(weeks <= max)) return false;
+    return true;
+  });
+}
+
+async function realListOffers({ gouvernorat, limit, cursor, ...filters } = {}) {
+  const res = await api(`/v1/offers${qs({ gouvernorat, limit, cursor })}`);
+  const items = (res.items ?? []).map(adaptOffer);
+  items.forEach((offer) => offerCache.set(offer.offerId, Promise.resolve(offer)));
+  return { items: filterOffers(items, filters), nextCursor: res.nextCursor ?? null };
+}
+
+async function realGetOffer(offerId) {
+  const offer = adaptOffer(await api(`/v1/offers/${enc(offerId)}`));
+  offerCache.set(offerId, Promise.resolve(offer));
+  return offer;
+}
+
+// ---- Applications ---------------------------------------------------------------
+// The API has no offerTitle, companyName, gouvernorat or workMode on applications: they are read
+// from the offer. Never throws: an unreadable offer gives "Offre indisponible".
+async function enrichApplication(app) {
+  const offer = await fetchOfferCached(app.offerId);
+  return {
+    ...app,
+    offerTitle: app.offerTitle ?? offer?.title ?? "Offre indisponible", // NOT IN API YET
+    companyName: app.companyName ?? offer?.companyName ?? "Entreprise", // NOT IN API YET
+    gouvernorat: app.gouvernorat ?? offer?.gouvernorat ?? null, // NOT IN API YET
+    workMode: app.workMode ?? offer?.workMode ?? null, // NOT IN API YET
+  };
+}
+
+async function realListMyApplications({ limit, cursor } = {}) {
+  const res = await api(`/v1/students/me/applications${qs({ limit, cursor })}`);
+  return {
+    items: await Promise.all((res.items ?? []).map(enrichApplication)),
+    nextCursor: res.nextCursor ?? null,
+  };
+}
+
+// Backend errors reach the page unchanged. 409 codes: ALREADY_APPLIED, APPLICATION_LIMIT,
+// OFFER_NOT_OPEN (apply); INVALID_TRANSITION, COUNTER_OUT_OF_SYNC (withdraw, decline).
+async function realApplyToOffer(offerId) {
+  const res = await api(`/v1/offers/${enc(offerId)}/applications`, { method: "POST" });
+  return enrichApplication(res);
+}
+
+async function realActOnApplication(offerId, action) {
+  const studentId = getUser()?.userId;
+  if (!studentId) throw sessionExpired();
+  const res = await api(`/v1/applications/${enc(offerId)}/${enc(studentId)}`, {
+    method: "PATCH",
+    body: { action },
+  });
+  return enrichApplication(res);
+}
+
+// ---- Recommendations ------------------------------------------------------------
+// The endpoint is a stub ({ items: [] }, no nextCursor). Items follow the spec: { rank, offerId,
+// score, computedAt, offer? }. A missing offer is loaded, a recommendation without readable
+// offer is dropped.
+async function realListMyRecommendations({ limit, cursor } = {}) {
+  const res = await api(`/v1/students/me/recommendations${qs({ limit, cursor })}`);
+  const items = await Promise.all(
+    (res.items ?? []).map(async (rec) => {
+      const offer = rec.offer ? adaptOffer(rec.offer) : await fetchOfferCached(rec.offerId);
+      return offer ? { ...rec, offer } : null;
+    }),
+  );
+  return { items: items.filter(Boolean), nextCursor: res.nextCursor ?? null };
+}
+
+// ============================================================================
+// PUBLIC EXPORTS of the 8 migrated functions: real or mock according to REAL.
+// ============================================================================
+export async function getMe() {
+  return REAL.me ? realGetMe() : mockGetMe();
+}
+
+export async function updateMe(partial) {
+  return REAL.me ? realUpdateMe(partial) : mockUpdateMe(partial);
+}
+
+export async function listOffers(params) {
+  return REAL.offers ? realListOffers(params) : mockListOffers();
+}
+
+export async function getOffer(id) {
+  return REAL.offers ? realGetOffer(id) : mockGetOffer(id);
+}
+
+export async function listMyRecommendations(params) {
+  return REAL.recommendations
+    ? realListMyRecommendations(params)
+    : mockListMyRecommendations();
+}
+
+export async function listMyApplications(params) {
+  return REAL.applications ? realListMyApplications(params) : mockListMyApplications();
+}
+
+export async function applyToOffer(id) {
+  return REAL.applications ? realApplyToOffer(id) : mockApplyToOffer(id);
+}
+
+export async function actOnApplication(id, action) {
+  if (!REAL.applications) return mockActOnApplication(id, action);
+  if (action === "confirm" && !REAL_CONFIRM) {
+    // MOCK (conventions backend missing). The mock list is empty while real applications are on,
+    // so answer with a CONFIRMED copy instead of undefined. Nothing changes server-side: the next
+    // listMyApplications still returns the real status.
+    const mocked = await mockActOnApplication(id, action);
+    return (
+      mocked ?? {
+        studentId: getUser()?.userId,
+        offerId: id,
+        status: "CONFIRMED",
+        updatedAt: new Date().toISOString(),
+      }
+    );
+  }
+  return realActOnApplication(id, action);
 }

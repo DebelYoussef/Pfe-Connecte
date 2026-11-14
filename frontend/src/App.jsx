@@ -16,6 +16,7 @@ import Journal from "./pages/student/Journal";
 import Report from "./pages/student/Report";
 import Notifications from "./pages/student/Notifications";
 import Profile from "./pages/student/Profile";
+import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 
 function PublicOnly({ children }) {
@@ -98,7 +99,7 @@ export default function App() {
         path="/teacher"
         element={
           <ProtectedRoute roles={["ENS"]}>
-            <RolePlaceholder title="Espace enseignant" />
+            <TeacherDashboard />
           </ProtectedRoute>
         }
       />
