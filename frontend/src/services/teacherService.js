@@ -1,9 +1,9 @@
-import { activities, reports, requests, students, teacher } from '../data/teacherMockData'
+import { activities, reports, requests, students } from '../data/teacherMockData'
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
 export async function getTeacherDashboard() {
-  return { teacher: clone(teacher), stats: { students: 24, requests: 3, reportsToReview: 5, validatedReports: 16 }, activities: clone(activities) }
+  return { stats: { students: 24, requests: 3, reportsToReview: 5, validatedReports: 16 }, activities: clone(activities) }
 }
 export async function getSupervisedStudents() { return clone(students) }
 export async function getSupervisionRequests() { return clone(requests) }

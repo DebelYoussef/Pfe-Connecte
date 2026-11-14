@@ -5,8 +5,6 @@ import CompleteProfile from "./components/CompleteProfile";
 import ProtectedRoute from "./components/ProtectedRoute";
 import StudentLayout from "./components/layout/StudentLayout";
 import Home from "./pages/student/Home";
-import Placeholder from "./pages/student/Placeholder";
-import LockedPage from "./components/LockedPage";
 import Offers from "./pages/student/Offers";
 import OfferDetail from "./pages/student/OfferDetail";
 import Applications from "./pages/student/Applications";
@@ -16,7 +14,12 @@ import Journal from "./pages/student/Journal";
 import Report from "./pages/student/Report";
 import Notifications from "./pages/student/Notifications";
 import Profile from "./pages/student/Profile";
+import TeacherLayout from "./components/layout/TeacherLayout";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import TeacherStudents from "./pages/teacher/TeacherStudents";
+import TeacherRequests from "./pages/teacher/TeacherRequests";
+import TeacherReports from "./pages/teacher/TeacherReports";
+import TeacherProfile from "./pages/teacher/TeacherProfile";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 
 function PublicOnly({ children }) {
@@ -47,6 +50,13 @@ function RolePlaceholder({ title }) {
         Se déconnecter
       </button>
     </main>
+  );
+}
+function TeacherPlaceholder() {
+  return (
+    <section className="student-page">
+      <h1>Bientôt disponible</h1>
+    </section>
   );
 }
 export default function App() {
@@ -99,10 +109,18 @@ export default function App() {
         path="/teacher"
         element={
           <ProtectedRoute roles={["ENS"]}>
-            <TeacherDashboard />
+            <TeacherLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<TeacherDashboard />} />
+        <Route path="etudiants" element={<TeacherStudents />} />
+        <Route path="etudiants/:studentId" element={<TeacherPlaceholder />} />
+        <Route path="demandes" element={<TeacherRequests />} />
+        <Route path="rapports" element={<TeacherReports />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="profil" element={<TeacherProfile />} />
+      </Route>
       <Route
         path="/responsable"
         element={

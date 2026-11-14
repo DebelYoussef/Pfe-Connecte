@@ -17,15 +17,26 @@ const iconFor = {
   REPORT: FileText,
   REMINDER: Bell,
 };
-const routeFor = {
-  APPLICATION: "/student/candidatures",
-  CONVENTION: "/student/convention",
-  SUPERVISION: "/student/encadrant",
-  JOURNAL: "/student/journal",
-  REPORT: "/student/rapport",
-  PROFILE: "/student/profil",
-};
-export default function NotificationBell() {
+function destinationFor(notificationRouteMap, item, homePath) {
+  const destination = notificationRouteMap?.[item.refType];
+  if (!destination) return homePath;
+  return destination.replace("{refId}", encodeURIComponent(item.refId || ""));
+}
+
+function createdLabel(createdAt) {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+export default function NotificationBell({
+  notificationRouteMap,
+  notificationsPath = "/student/notifications",
+  homePath = "/student",
+}) {
   const { items, unread, markRead, markAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -79,9 +90,11 @@ export default function NotificationBell() {
                   className="notification-popover-row"
                   key={item.id}
                   onClick={() => {
-                    markRead(item.id);
+                    if (!item.read) void markRead(item.id);
                     setOpen(false);
-                    navigate(routeFor[item.refType] || "/student");
+                    navigate(
+                      destinationFor(notificationRouteMap, item, homePath),
+                    );
                   }}
                 >
                   <span className="notification-type-icon">
@@ -90,7 +103,7 @@ export default function NotificationBell() {
                   <span>
                     <strong>{item.title}</strong>
                     <small>{item.body}</small>
-                    <em>il y a 2 h</em>
+                    <em>{createdLabel(item.createdAt)}</em>
                   </span>
                   {!item.read && <i />}
                 </button>
@@ -100,7 +113,7 @@ export default function NotificationBell() {
               <p className="empty-state">Aucune notification</p>
             )}
           </div>
-          <Link to="/student/notifications" onClick={() => setOpen(false)}>
+          <Link to={notificationsPath} onClick={() => setOpen(false)}>
             Voir toutes les notifications
           </Link>
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, Check, ChevronRight, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, UserRound, X } from 'lucide-react'
+import { Check, ChevronRight, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, UserRound, X } from 'lucide-react'
 import { getCurrentTeacher } from './currentTeacher'
 import './teacherProfile.css'
 
@@ -16,12 +16,6 @@ function buildProfileDefaults() {
   }
 }
 
-const preferenceDefaults = [
-  { id: 'requests', label: 'Nouvelles demandes', description: 'Lorsqu’un étudiant demande un accompagnement.', enabled: true },
-  { id: 'reports', label: 'Rapports soumis', description: 'Lorsqu’un étudiant dépose ou met à jour un rapport.', enabled: true },
-  { id: 'reminders', label: 'Rappels', description: 'Pour les échéances et les soutenances à venir.', enabled: false },
-]
-
 function getInitials(firstName, lastName) {
   return `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toLocaleUpperCase('fr')
 }
@@ -29,7 +23,6 @@ function getInitials(firstName, lastName) {
 export default function TeacherProfile() {
   const [profile, setProfile] = useState(buildProfileDefaults)
   const [savedProfile, setSavedProfile] = useState(buildProfileDefaults)
-  const [preferences, setPreferences] = useState(preferenceDefaults)
   const [errors, setErrors] = useState({})
   const [message, setMessage] = useState('')
   const [password, setPassword] = useState({ current: '', next: '', confirm: '' })
@@ -67,10 +60,6 @@ export default function TeacherProfile() {
     setMessage('Modifications annulées.')
   }
 
-  function updatePreference(id) {
-    setPreferences((current) => current.map((preference) => preference.id === id ? { ...preference, enabled: !preference.enabled } : preference))
-  }
-
   function changePassword(event) {
     event.preventDefault()
     setPasswordError('')
@@ -92,7 +81,7 @@ export default function TeacherProfile() {
   }
 
   return <section className="pf-page" aria-labelledby="pf-title">
-    <header className="pf-heading"><div><span className="pf-eyebrow">ESPACE ENSEIGNANT</span><h1 id="pf-title">Mon profil</h1><p>Gérez vos informations, vos préférences et les paramètres de votre compte enseignant.</p></div><span className="pf-role"><ShieldCheck size={17} />Enseignant encadrant</span></header>
+    <header className="pf-heading"><div><span className="pf-eyebrow">ESPACE ENSEIGNANT</span><h1 id="pf-title">Mon profil</h1><p>Gérez vos informations et les paramètres de votre compte enseignant.</p></div><span className="pf-role"><ShieldCheck size={17} />Enseignant encadrant</span></header>
     <section className="pf-identity" aria-label="Carte d’identité"><span className="pf-avatar">{getInitials(savedProfile.firstName, savedProfile.lastName)}</span><div className="pf-identity-info"><span className="pf-eyebrow">VOTRE COMPTE</span><h2>{fullName}</h2><p>{savedProfile.email}</p></div><span className="pf-identity-role"><UserRound size={15} />Enseignant encadrant</span></section>
     <div className="pf-layout"><div className="pf-main-column">
       <section className="pf-panel"><header className="pf-panel-heading"><span className="pf-panel-icon pf-panel-icon-teal"><UserRound size={18} /></span><div><h2>Informations personnelles</h2><p>Ces informations composent votre profil enseignant.</p></div></header>
@@ -106,7 +95,6 @@ export default function TeacherProfile() {
           <label className="pf-field pf-field-wide"><span>Spécialités encadrées</span><textarea name="specialties" rows="3" value={profile.specialties} onChange={updateProfile} /></label>
         </div><div className="pf-form-footer"><span className="pf-required-note"><i>*</i> Champs obligatoires</span><div className="pf-form-actions"><button className="pf-button pf-button-quiet" type="button" onClick={cancelChanges}><X size={15} />Annuler</button><button className="pf-button pf-button-primary" type="submit"><Save size={15} />Enregistrer</button></div></div>{message && <p className={`pf-form-message ${Object.keys(errors).length ? 'pf-message-error' : ''}`} role="status">{message}</p>}</form>
       </section>
-      <section className="pf-panel pf-preferences"><header className="pf-panel-heading"><span className="pf-panel-icon pf-panel-icon-gold"><Bell size={18} /></span><div><h2>Préférences de notification</h2><p>Choisissez les alertes que vous souhaitez recevoir.</p></div></header><div className="pf-preference-list">{preferences.map((preference) => <div className="pf-preference" key={preference.id}><span className="pf-preference-copy"><strong>{preference.label}</strong><small>{preference.description}</small></span><button className="pf-switch" type="button" role="switch" aria-checked={preference.enabled} aria-label={preference.label} onClick={() => updatePreference(preference.id)}><span /></button></div>)}</div></section>
     </div><aside className="pf-side-column"><section className="pf-panel pf-security"><header className="pf-panel-heading"><span className="pf-panel-icon pf-panel-icon-slate"><LockKeyhole size={18} /></span><div><h2>Sécurité</h2><p>Vérifiez les critères de votre nouveau mot de passe.</p></div></header><form onSubmit={changePassword} noValidate><label className="pf-field"><span>Mot de passe actuel</span><span className="pf-password-wrap"><input type={showCurrent ? 'text' : 'password'} value={password.current} onChange={(event) => setPassword((current) => ({ ...current, current: event.target.value }))} autoComplete="current-password" /><button type="button" aria-label={showCurrent ? 'Masquer le mot de passe actuel' : 'Afficher le mot de passe actuel'} onClick={() => setShowCurrent((value) => !value)}>{showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label><label className="pf-field"><span>Nouveau mot de passe</span><span className="pf-password-wrap"><input type={showNext ? 'text' : 'password'} value={password.next} onChange={(event) => setPassword((current) => ({ ...current, next: event.target.value }))} autoComplete="new-password" /><button type="button" aria-label={showNext ? 'Masquer le nouveau mot de passe' : 'Afficher le nouveau mot de passe'} onClick={() => setShowNext((value) => !value)}>{showNext ? <EyeOff size={16} /> : <Eye size={16} />}</button></span><small className="pf-field-hint">8 caractères minimum.</small></label><label className="pf-field"><span>Confirmer le nouveau mot de passe</span><span className="pf-password-wrap"><input type={showConfirm ? 'text' : 'password'} value={password.confirm} onChange={(event) => setPassword((current) => ({ ...current, confirm: event.target.value }))} autoComplete="new-password" /><button type="button" aria-label={showConfirm ? 'Masquer la confirmation' : 'Afficher la confirmation'} onClick={() => setShowConfirm((value) => !value)}>{showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>{passwordError && <p className="pf-password-feedback pf-password-error" role="alert">{passwordError}</p>}{passwordMessage && <p className="pf-password-feedback" role="status">{passwordMessage}</p>}<button className="pf-button pf-button-outline" type="submit"><LockKeyhole size={15} />Vérifier le nouveau mot de passe</button></form><div className="pf-security-note"><ShieldCheck size={15} /><span>Cette démonstration vérifie les champs localement, sans envoyer ni enregistrer de mot de passe.</span></div></section><div className="pf-help-note"><span className="pf-help-icon"><Check size={15} /></span><p>Votre profil est visible par les étudiants qui sollicitent un encadrement.</p><ChevronRight size={15} /></div></aside></div>
   </section>
 }

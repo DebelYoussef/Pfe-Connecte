@@ -1,5 +1,3 @@
-export const teacher = { name: 'Nadia Benali', firstName: 'Nadia', email: 'nadia.benali@ens.edu' }
-
 export const students = [
   { id: 1, name: 'Yasmine Haddad', initials: 'YH', subject: 'Plateforme de suivi des stages', company: 'Sopra HR', specialty: 'Génie logiciel', status: 'En cours', color: '#dbeceb' },
   { id: 2, name: 'Omar Rahmani', initials: 'OR', subject: 'Optimisation des flux logistiques', company: 'Cevital', specialty: 'Data & IA', status: 'Rapport à examiner', color: '#f6e8c9' },
