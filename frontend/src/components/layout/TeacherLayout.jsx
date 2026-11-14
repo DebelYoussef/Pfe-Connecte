@@ -6,11 +6,13 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "./AppShell";
-import { requests } from "../../data/teacherMockData";
 import {
+  getRequestedSupervisionCount,
   listTeacherNotifications,
   markTeacherNotificationRead,
+  subscribeToTeacherData,
 } from "../../services.teacher";
 
 const notificationRouteMap = {
@@ -19,26 +21,43 @@ const notificationRouteMap = {
   JOURNAL: "/teacher/etudiants/{refId}",
 };
 
-const navItems = [
-  { to: "/teacher", label: "Tableau de bord", icon: LayoutDashboard, end: true },
-  { to: "/teacher/etudiants", label: "Mes étudiants", icon: UsersRound },
-  {
-    to: "/teacher/demandes",
-    label: "Demandes d'encadrement",
-    icon: GraduationCap,
-    badge: requests.filter((request) => request.status === "REQUESTED").length,
-  },
-  { to: "/teacher/rapports", label: "Rapports PFE", icon: FileText },
-  { to: "/teacher/notifications", label: "Notifications", icon: Bell, badge: "unread" },
-  { to: "/teacher/profil", label: "Mon profil", icon: UserRound },
-];
-
 const notificationService = {
   listNotifications: listTeacherNotifications,
   markNotificationRead: markTeacherNotificationRead,
 };
 
 export default function TeacherLayout() {
+  const [requestCount, setRequestCount] = useState(getRequestedSupervisionCount);
+  const navItems = useMemo(
+    () => [
+      { to: "/teacher", label: "Tableau de bord", icon: LayoutDashboard, end: true },
+      { to: "/teacher/etudiants", label: "Mes étudiants", icon: UsersRound },
+      {
+        to: "/teacher/demandes",
+        label: "Demandes d'encadrement",
+        icon: GraduationCap,
+        badge: requestCount,
+      },
+      { to: "/teacher/rapports", label: "Rapports PFE", icon: FileText },
+      {
+        to: "/teacher/notifications",
+        label: "Notifications",
+        icon: Bell,
+        badge: "unread",
+      },
+      { to: "/teacher/profil", label: "Mon profil", icon: UserRound },
+    ],
+    [requestCount],
+  );
+
+  useEffect(
+    () =>
+      subscribeToTeacherData(() =>
+        setRequestCount(getRequestedSupervisionCount()),
+      ),
+    [],
+  );
+
   return (
     <AppShell
       roleLabel="Enseignant"

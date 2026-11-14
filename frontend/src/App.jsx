@@ -19,6 +19,7 @@ import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherStudents from "./pages/teacher/TeacherStudents";
 import TeacherRequests from "./pages/teacher/TeacherRequests";
 import TeacherReports from "./pages/teacher/TeacherReports";
+import TeacherStudentDetail from "./pages/teacher/TeacherStudentDetail";
 import TeacherProfile from "./pages/teacher/TeacherProfile";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 
@@ -50,13 +51,6 @@ function RolePlaceholder({ title }) {
         Se déconnecter
       </button>
     </main>
-  );
-}
-function TeacherPlaceholder() {
-  return (
-    <section className="student-page">
-      <h1>Bientôt disponible</h1>
-    </section>
   );
 }
 export default function App() {
@@ -115,7 +109,10 @@ export default function App() {
       >
         <Route index element={<TeacherDashboard />} />
         <Route path="etudiants" element={<TeacherStudents />} />
-        <Route path="etudiants/:studentId" element={<TeacherPlaceholder />} />
+        <Route
+          path="etudiants/:studentId"
+          element={<TeacherStudentDetail />}
+        />
         <Route path="demandes" element={<TeacherRequests />} />
         <Route path="rapports" element={<TeacherReports />} />
         <Route path="notifications" element={<Notifications />} />

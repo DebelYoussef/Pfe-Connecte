@@ -95,25 +95,27 @@ function ShellContent({
           )}
         </nav>
         <div className="sidebar-user">
-          <Link
-            className="sidebar-user-link interactive"
-            to={profilePath}
-            title="Mon profil"
-          >
-            <span className="user-avatar">{initials}</span>
-            <span>
-              <strong>{fullName}</strong>
-              <small>{roleLabel}</small>
-            </span>
-          </Link>
-          <button
-            className="logout-button interactive"
-            type="button"
-            onClick={() => setLogoutOpen(true)}
-          >
-            <LogOut size={16} />
-            <span>Se déconnecter</span>
-          </button>
+          <div className="sidebar-user-row">
+            <Link
+              className="sidebar-user-link interactive"
+              to={profilePath}
+              title="Mon profil"
+            >
+              <span className="user-avatar">{initials}</span>
+              <span>
+                <strong>{fullName}</strong>
+                <small>{roleLabel}</small>
+              </span>
+            </Link>
+            <IconButton
+              label="Se déconnecter"
+              tooltip="Se déconnecter"
+              className="logout-button"
+              onClick={() => setLogoutOpen(true)}
+            >
+              <LogOut size={16} />
+            </IconButton>
+          </div>
         </div>
       </aside>
       {menuOpen && (

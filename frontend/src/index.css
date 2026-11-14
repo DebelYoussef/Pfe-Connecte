@@ -821,7 +821,7 @@ h2 {
   align-items: center;
   gap: 9px;
 }
-.sidebar-user-row > span:nth-child(2) {
+.sidebar-user-link > span:nth-child(2) {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1330,7 +1330,7 @@ h2 {
   align-items: center;
   gap: 9px;
   min-width: 0;
-  width: 100%;
+  width: auto;
   flex: 1;
   color: var(--text);
   text-decoration: none;
@@ -1344,14 +1344,16 @@ h2 {
 .sidebar-user .logout-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin: 12px 0 0;
-  padding: 5px 7px;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
   cursor: pointer;
 }
 .sidebar-user .logout-button:hover {
@@ -2899,6 +2901,52 @@ h2 {
   margin-left: auto;
 }
 
+.student-nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teacher-dashboard-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.teacher-dashboard-hero .eyebrow {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.teacher-dashboard-hero h1 {
+  margin: 0;
+  font: 600 32px/1.15 var(--serif);
+}
+.teacher-dashboard-hero p:last-child {
+  overflow: hidden;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teacher-dashboard-hero-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  place-items: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
 .teacher-dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2946,13 +2994,24 @@ h2 {
 .teacher-dashboard-stat strong {
   font-size: 24px;
 }
+.teacher-dashboard-stat .ui-skeleton {
+  width: 36px;
+  height: 22px;
+}
 .teacher-dashboard-stat > svg {
   flex: none;
   color: var(--muted);
 }
-.teacher-dashboard-columns {
+.teacher-dashboard-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.65fr) minmax(270px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+.teacher-dashboard-main,
+.teacher-dashboard-side {
+  display: grid;
+  min-width: 0;
   gap: 16px;
 }
 .teacher-dashboard-card {
@@ -2999,14 +3058,183 @@ h2 {
   color: var(--muted);
   white-space: nowrap;
 }
+.teacher-dashboard-row-link,
+.teacher-dashboard-activity {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.teacher-dashboard-row-link > span:first-child,
+.teacher-dashboard-activity > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.teacher-dashboard-row-link strong,
+.teacher-dashboard-activity strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teacher-dashboard-row-link small,
+.teacher-dashboard-activity small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teacher-dashboard-row-end {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.teacher-request-preview {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.teacher-request-preview strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.teacher-request-preview small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teacher-request-preview-actions {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+}
+.teacher-request-preview-actions button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.teacher-request-preview-actions button:hover {
+  border-color: var(--primary);
+}
+.teacher-dashboard-todo li {
+  padding: 0;
+}
+.teacher-dashboard-todo a {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.teacher-dashboard-todo a > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+.teacher-dashboard-todo a svg {
+  flex: none;
+  color: var(--primary);
+}
+.teacher-dashboard-todo strong {
+  display: grid;
+  min-width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+}
+.teacher-dashboard-activity {
+  align-items: flex-start;
+}
+.teacher-dashboard-activity > small {
+  flex: none;
+}
+.teacher-zone-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 13px;
+}
+.teacher-zone-error button {
+  flex: none;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+}
+.teacher-zone-skeleton {
+  display: grid;
+  gap: 12px;
+}
+.teacher-zone-skeleton .ui-skeleton {
+  width: 100%;
+  height: 44px;
+}
 @media (max-width: 1000px) {
   .teacher-dashboard-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .teacher-dashboard-layout {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 700px) {
-  .teacher-dashboard-columns {
-    grid-template-columns: 1fr;
+  .teacher-dashboard-hero {
+    padding: 18px;
+  }
+  .teacher-dashboard-hero h1 {
+    font-size: 27px;
+  }
+  .teacher-dashboard-card {
+    padding: 16px;
+  }
+  .teacher-dashboard-card li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .teacher-dashboard-row-link,
+  .teacher-dashboard-activity {
+    align-items: flex-start;
+  }
+  .teacher-dashboard-row-end {
+    align-self: flex-end;
+  }
+  .teacher-request-preview-actions {
+    align-self: flex-end;
   }
 }
 .student-content .ts-page,
