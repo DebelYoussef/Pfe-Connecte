@@ -5,8 +5,11 @@ import TeacherRequests from './TeacherRequests'
 import TeacherReports from './TeacherReports'
 import TeacherNotifications from './TeacherNotifications'
 import TeacherProfile from './TeacherProfile'
+import { useNavigate } from 'react-router-dom'
+import { logout } from '../../auth'
+import { getCurrentTeacher } from './currentTeacher'
 import { Bell, BookOpen, Check, ChevronRight, ClipboardCheck, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, Moon, MoreHorizontal, Search, Settings, Sun, UserRound, Users, X } from 'lucide-react'
-import { activities, reports as initialReports, requests as initialRequests, students, teacher } from '../../data/teacherMockData'
+import { activities, reports as initialReports, requests as initialRequests, students } from '../../data/teacherMockData'
 
 const navItems = [
   { label: 'Tableau de bord', icon: LayoutDashboard }, { label: 'Mes étudiants', icon: Users }, { label: "Demandes d'encadrement", icon: GraduationCap }, { label: 'Rapports PFE', icon: FileText }, { label: 'Notifications', icon: Bell }, { label: 'Mon profil', icon: UserRound },
@@ -17,6 +20,8 @@ function Avatar({ initials, color = '#dbeceb' }) { return <span className="teach
 function Status({ value }) { return <span className={`teacher-status status-${value.toLowerCase()}`}><span />{statusLabels[value] || value}</span> }
 
 export default function TeacherDashboard() {
+  const navigate = useNavigate()
+  const teacher = useMemo(() => getCurrentTeacher(), [])
   const [active, setActive] = useState('Tableau de bord')
   const [unread, setUnread] = useState(3)
   const [query, setQuery] = useState('')
@@ -28,6 +33,7 @@ export default function TeacherDashboard() {
   const [noticeOpen, setNoticeOpen] = useState(false)
   const filteredStudents = useMemo(() => students.filter((s) => `${s.name} ${s.subject} ${s.company}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'Tous les statuts' || s.status === filter)), [query, filter])
 
+  function handleLogout() { logout(); navigate('/login', { replace: true }) }
   function handleRequest(id, status) { setRequests((items) => items.map((item) => item.id === id ? { ...item, status } : item)) }
   function handleReport(id, status) { setReportData((items) => items.map((item) => item.id === id ? { ...item, status } : item)) }
 
@@ -36,10 +42,10 @@ export default function TeacherDashboard() {
       <div className="teacher-brand"><span className="teacher-brand-mark">P</span><span>PFE <b>Connect</b></span></div>
       <div className="sidebar-label">ESPACE ENSEIGNANT</div>
       <nav>{navItems.map(({ label, icon: Icon }) => <button className={active === label ? 'nav-active' : ''} key={label} onClick={() => { setActive(label); setMenuOpen(false) }}><Icon size={17} /><span>{label}</span>{label === 'Notifications' && unread > 0 && <em>{unread}</em>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="profile-mini"><Avatar initials="NB" color="#e9dcbf" /><div><strong>{teacher.name}</strong><small>{teacher.email}</small></div></div><button className="logout"><LogOut size={16} />Se déconnecter</button></div>
+      <div className="sidebar-bottom"><div className="profile-mini"><Avatar initials={teacher.initials} color="#e9dcbf" /><div><strong>{teacher.name}</strong><small>{teacher.email}</small></div></div><button className="logout" onClick={handleLogout}><LogOut size={16} />Se déconnecter</button></div>
     </aside>
     <main className="teacher-main">
-      <header className="teacher-header"><button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Ouvrir le menu"><Menu size={21} /></button><div className="breadcrumb"><span>Espace enseignant</span><ChevronRight size={14} /><b>{active}</b></div><div className="header-actions"><div className="top-search"><Search size={16} /><input aria-label="Rechercher" placeholder="Rechercher une information" /></div><button className="icon-btn notification-button" onClick={() => setNoticeOpen(!noticeOpen)} aria-label="Notifications"><Bell size={18} /><i /></button><button className="icon-btn" onClick={() => setDark(!dark)} aria-label="Changer de thème">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><Avatar initials="NB" color="#e9dcbf" />{noticeOpen && <div className="notification-popover"><strong>Notifications</strong><p>3 nouvelles notifications</p><p>Demande de Lina Saïdi</p></div>}</div></header>
+      <header className="teacher-header"><button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Ouvrir le menu"><Menu size={21} /></button><div className="breadcrumb"><span>Espace enseignant</span><ChevronRight size={14} /><b>{active}</b></div><div className="header-actions"><div className="top-search"><Search size={16} /><input aria-label="Rechercher" placeholder="Rechercher une information" /></div><button className="icon-btn notification-button" onClick={() => setNoticeOpen(!noticeOpen)} aria-label="Notifications"><Bell size={18} /><i /></button><button className="icon-btn" onClick={() => setDark(!dark)} aria-label="Changer de thème">{dark ? <Sun size={18} /> : <Moon size={18} />}</button><Avatar initials={teacher.initials} color="#e9dcbf" />{noticeOpen && <div className="notification-popover"><strong>Notifications</strong><p>3 nouvelles notifications</p><p>Demande de Lina Saïdi</p></div>}</div></header>
       {active === 'Mes étudiants' ? <div className="teacher-content"><TeacherStudents /></div> : active === "Demandes d'encadrement" ? <div className="teacher-content"><TeacherRequests /></div> : active === 'Rapports PFE' ? <div className="teacher-content"><TeacherReports /></div> : <div className="teacher-content" hidden={active !== 'Tableau de bord'}>
         <section className="teacher-welcome"><div><span className="teacher-eyebrow">ESPACE ENSEIGNANT</span><h1>Bonjour, {teacher.firstName}</h1><p>Suivez vos étudiants et accompagnez-les jusqu'à la réussite de leur projet de fin d'études.</p></div><div className="welcome-stamp"><ClipboardCheck size={28} /><span>Année universitaire<br /><b>2024 — 2025</b></span></div></section>
         <section className="teacher-stats">{[[Users, 'Étudiants encadrés', '24', '3 nouveaux ce mois'], [GraduationCap, 'Demandes en attente', '3', 'À traiter rapidement'], [FileText, 'Rapports à examiner', '5', '2 reçus cette semaine'], [Check, 'Rapports validés', '16', 'Cette année']].map(([Icon, label, value, detail], i) => <article key={label} className={`stat-card stat-${i}`}><div className="stat-icon"><Icon size={18} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><MoreHorizontal size={17} className="stat-more" /></article>)}</section>

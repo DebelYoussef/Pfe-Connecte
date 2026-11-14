@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { Bell, Check, ChevronRight, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, UserRound, X } from 'lucide-react'
-import { teacher } from '../../data/teacherMockData'
+import { getCurrentTeacher } from './currentTeacher'
 import './teacherProfile.css'
 
-const profileDefaults = {
+function buildProfileDefaults() {
+  const teacher = getCurrentTeacher()
+  return {
   firstName: teacher.firstName,
-  lastName: teacher.name.replace(teacher.firstName, '').trim(),
+  lastName: teacher.lastName,
   email: teacher.email,
   phone: '+213 555 01 24 68',
   institution: 'École Nationale Supérieure',
   department: 'Informatique',
   specialties: 'Génie logiciel, Data & IA, Cybersécurité',
+  }
 }
 
 const preferenceDefaults = [
@@ -24,8 +27,8 @@ function getInitials(firstName, lastName) {
 }
 
 export default function TeacherProfile() {
-  const [profile, setProfile] = useState(profileDefaults)
-  const [savedProfile, setSavedProfile] = useState(profileDefaults)
+  const [profile, setProfile] = useState(buildProfileDefaults)
+  const [savedProfile, setSavedProfile] = useState(buildProfileDefaults)
   const [preferences, setPreferences] = useState(preferenceDefaults)
   const [errors, setErrors] = useState({})
   const [message, setMessage] = useState('')
