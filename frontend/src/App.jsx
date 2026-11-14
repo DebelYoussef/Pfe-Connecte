@@ -3,6 +3,8 @@ import Login from "./components/Login";
 import Signup from "./components/Signup";
 import CompleteProfile from "./components/CompleteProfile";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CompanyLayout from "./components/CompanyLayout";
+import CompanyHome from "./components/Company/CompanyHome";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 
 function PublicOnly({ children }) {
@@ -63,6 +65,23 @@ export default function App() {
         />
       ))}
       <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Navigate to="/company" replace />} />
+      <Route path="/login" element={<div className="p-10"><Placeholder title="Connexion" /></div>} />
+
+        <Route path="/company" element={<CompanyLayout />}>
+        <Route index element={<CompanyHome />} />
+        <Route path="offers" element={<Placeholder title="Mes offres" />} />
+        <Route path="offers/new" element={<Placeholder title="Publier une offre" />} />
+        <Route path="offers/:id" element={<Placeholder title="Offre" />} />
+        <Route path="offers/:id/edit" element={<Placeholder title="Modifier l’offre" />} />
+        <Route path="applications" element={<Placeholder title="Candidatures" />} />
+        <Route path="applications/:id" element={<Placeholder title="Candidature" />} />
+        <Route path="convention" element={<Placeholder title="Conventions" />} />
+        <Route path="journals" element={<Placeholder title="Journaux" />} />
+        <Route path="reports" element={<Placeholder title="Rapports" />} />
+        <Route path="notifications" element={<Placeholder title="Notifications" />} />
+        <Route path="profile" element={<Placeholder title="Profil" />} />
+        </Route>
     </Routes>
   );
 }
