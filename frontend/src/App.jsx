@@ -10,14 +10,13 @@ import CompanyLayout from "./components/Company/CompanyLayout";
 import CompanyOfferDetail from "./components/Company/CompanyOfferDetail";
 import CompanyOfferForm from "./components/Company/CompanyOfferForm";
 import CompanyOffers from "./components/Company/CompanyOffers";
+import CompanyProfile from "./components/Company/CompanyProfile";
 import CompanyReports from "./components/Company/CompanyReports";
 import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./components/Signup";
 import StudentLayout from "./components/layout/StudentLayout";
 import TeacherLayout from "./components/layout/TeacherLayout";
-import EmptyState from "./components/ui/EmptyState";
-import PageHeader from "./components/ui/PageHeader";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 import Applications from "./pages/student/Applications";
 import Convention from "./pages/student/Convention";
@@ -65,20 +64,6 @@ function RolePlaceholder({ title }) {
         Se déconnecter
       </button>
     </main>
-  );
-}
-
-function CompanyPlaceholder({ title }) {
-  return (
-    <>
-      <PageHeader eyebrow="Espace entreprise" title={title} />
-      <EmptyState
-        title={title}
-        message="Cette section arrive bientôt."
-        actionLabel="Retour à l’accueil"
-        actionTo="/company"
-      />
-    </>
   );
 }
 
@@ -163,7 +148,7 @@ export default function App() {
         />
         <Route path="rapports" element={<CompanyReports />} />
         <Route path="notifications" element={<Notifications />} />
-        <Route path="profil" element={<CompanyPlaceholder title="Mon profil" />} />
+        <Route path="profil" element={<CompanyProfile />} />
         <Route path="profile" element={<Navigate to="/company/profil" replace />} />
       </Route>
 

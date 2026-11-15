@@ -40,7 +40,18 @@ const ID = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const OTHER_COMPANY_ID = ID(999);
 const FOREIGN_OFFER_ID = ID(199);
 const stores = new Map();
-let profileExtras = {};
+// NOT IN API YET: logo, contact email, sector, size, gouvernorat, description and links.
+const PROFILE_EXTRA_DEFAULTS = {
+  avatarUrl: null,
+  bio: "",
+  contactEmail: "",
+  sector: "",
+  size: "",
+  gouvernorat: "",
+  links: { website: "", linkedin: "" },
+};
+const PROFILE_EXTRA_KEYS = Object.keys(PROFILE_EXTRA_DEFAULTS);
+const profileExtrasKey = (userId) => `profile-extras-${userId}`;
 
 function notifyCompanyDataChanged() {
   if (typeof window !== "undefined") {
@@ -57,6 +68,77 @@ const fail = (status, code, message, details = {}) => ({
   details,
 });
 const copy = (value) => JSON.parse(JSON.stringify(value));
+
+function readCompanyProfileExtras(userId) {
+  if (!userId) {
+    throw fail(401, "UNAUTHENTICATED", "La session utilisateur est introuvable.");
+  }
+  let raw;
+  try {
+    raw = window.localStorage.getItem(profileExtrasKey(userId));
+  } catch {
+    throw fail(500, "PROFILE_STORAGE_ERROR", "Les informations complémentaires du profil sont indisponibles.");
+  }
+  if (!raw) return { ...PROFILE_EXTRA_DEFAULTS, links: { ...PROFILE_EXTRA_DEFAULTS.links } };
+
+  let stored;
+  try {
+    stored = JSON.parse(raw);
+  } catch {
+    throw fail(500, "PROFILE_STORAGE_ERROR", "Les informations complémentaires du profil sont illisibles.");
+  }
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    throw fail(500, "PROFILE_STORAGE_ERROR", "Les informations complémentaires du profil sont invalides.");
+  }
+  const fields = Object.fromEntries(
+    PROFILE_EXTRA_KEYS.filter((field) => stored[field] !== undefined).map((field) => [field, stored[field]]),
+  );
+  const links =
+    fields.links && typeof fields.links === "object" && !Array.isArray(fields.links)
+      ? fields.links
+      : {};
+  return {
+    ...PROFILE_EXTRA_DEFAULTS,
+    ...fields,
+    links: { ...PROFILE_EXTRA_DEFAULTS.links, ...links },
+  };
+}
+
+function saveCompanyProfileExtras(userId, partial) {
+  const current = readCompanyProfileExtras(userId);
+  const partialLinks =
+    partial.links && typeof partial.links === "object" && !Array.isArray(partial.links)
+      ? partial.links
+      : {};
+  const next = {
+    ...current,
+    ...partial,
+    links: { ...current.links, ...partialLinks },
+  };
+  try {
+    window.localStorage.setItem(profileExtrasKey(userId), JSON.stringify(next));
+  } catch {
+    throw fail(500, "PROFILE_STORAGE_ERROR", "Les informations complémentaires n’ont pas pu être enregistrées localement.");
+  }
+  return next;
+}
+
+function syncCompanySession(user) {
+  const token = getToken();
+  if (!token) return;
+  const current = getUser() || {};
+  const next = { ...current, ...user };
+  if (JSON.stringify(next) !== JSON.stringify(current)) {
+    saveSession({ token, user: next });
+  }
+}
+
+function assertCompanyUser(user) {
+  if (!user || typeof user !== "object" || Array.isArray(user)) {
+    throw fail(502, "INVALID_PROFILE_RESPONSE", "Les informations du profil sont indisponibles.");
+  }
+  return user;
+}
 
 function daysAgo(days, hours = 0) {
   const date = new Date();
@@ -724,14 +806,16 @@ function validateReportDecision(decision, comment) {
 }
 
 export async function getMe() {
+  let user;
   if (REAL.me) {
-    const user = await api("/v1/me");
-    const token = getToken();
-    if (token) saveSession({ token, user: { ...(getUser() || {}), ...user } });
-    return { ...user, ...profileExtras };
+    user = assertCompanyUser(await api("/v1/me"));
+    syncCompanySession(user);
+  } else {
+    await wait(null);
+    user = getUser() || {};
   }
-  await wait(null);
-  return { ...(getUser() || {}), ...profileExtras };
+  const userId = user.userId || getUser()?.userId;
+  return { ...user, ...readCompanyProfileExtras(userId) };
 }
 
 export async function updateMe(partial = {}) {
@@ -742,21 +826,30 @@ export async function updateMe(partial = {}) {
       .map((field) => [field, partial[field]]),
   );
   const localFields = Object.fromEntries(
-    Object.entries(partial).filter(([field]) => !allowedFields.includes(field)),
+    Object.entries(partial).filter(([field]) => PROFILE_EXTRA_KEYS.includes(field)),
   );
+  const unknownFields = Object.keys(partial).filter(
+    (field) => !allowedFields.includes(field) && !PROFILE_EXTRA_KEYS.includes(field),
+  );
+  if (unknownFields.length) {
+    throw fail(400, "VALIDATION_ERROR", `Champ non pris en charge : ${unknownFields[0]}.`);
+  }
+
   let user;
   if (REAL.me) {
     user = Object.keys(apiFields).length
-      ? await api("/v1/me", { method: "PUT", body: apiFields })
-      : await api("/v1/me");
+      ? assertCompanyUser(await api("/v1/me", { method: "PUT", body: apiFields }))
+      : getUser() || {};
   } else {
     await wait(null);
     user = { ...(getUser() || {}), ...apiFields };
   }
-  profileExtras = { ...profileExtras, ...localFields };
-  const token = getToken();
-  if (token) saveSession({ token, user: { ...(getUser() || {}), ...user } });
-  return { ...user, ...profileExtras };
+  if (Object.keys(apiFields).length) syncCompanySession(user);
+  const userId = user.userId || getUser()?.userId;
+  const extras = Object.keys(localFields).length
+    ? saveCompanyProfileExtras(userId, localFields)
+    : readCompanyProfileExtras(userId);
+  return { ...user, ...extras };
 }
 
 export async function listMyOffers({ status, limit = 5, cursor = null } = {}) {
