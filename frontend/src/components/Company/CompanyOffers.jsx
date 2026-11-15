@@ -1,114 +1,341 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight, BriefcaseBusiness, CalendarDays, Check, ChevronRight, Clock3, MapPin, Pencil, Plus, RotateCw, Search, Users } from "lucide-react";
-import { getCompanyOffer, listMyOffers, saveCompanyOffer, setCompanyOfferStatus } from "../../services";
+import { Link } from "react-router-dom";
+import { CalendarDays, Clock, MapPin, Plus, Search } from "lucide-react";
+import ErrorBanner from "../../components/ErrorBanner";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import EmptyState from "../../components/ui/EmptyState";
+import PageHeader from "../../components/ui/PageHeader";
+import Skeleton from "../../components/ui/Skeleton";
+import StatusBadge from "../../components/ui/StatusBadge";
+import Toast from "../../components/ui/Toast";
+import {
+  COMPANY_OFFER_FILTERS,
+  getMyOfferStats,
+  getOfferApplicationCounts,
+  listMyOffers,
+  updateOffer,
+} from "../../services.company";
 
-const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
-const statusOptions = [
-  { value: "ALL", label: "Toutes" },
-  { value: "OPEN", label: "Ouvertes" },
-  { value: "CLOSED", label: "Fermées" },
-  { value: "FILLED", label: "Pourvues" },
-];
-const statusStyle = {
-  OPEN: "bg-primary-tint text-primary",
-  CLOSED: "bg-bg text-ink-soft border border-line",
-  FILLED: "bg-accent-tint text-accent-ink",
+const WORK_MODE_LABELS = {
+  ONSITE: "Sur site",
+  HYBRID: "Hybride",
+  REMOTE: "Télétravail",
 };
-const statusLabel = { OPEN: "Ouverte", CLOSED: "Fermée", FILLED: "Pourvue" };
 
-function Badge({ status }) {
-  return <span className={`inline-flex rounded px-2.5 py-1 text-xs font-semibold ${statusStyle[status]}`}>{statusLabel[status]}</span>;
-}
-function dateLabel(value) {
-  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
-}
-function ErrorState({ onRetry }) {
-  return <div role="alert" className="flex flex-wrap items-center justify-between gap-4 rounded border border-danger/30 bg-danger-tint p-5 text-sm"><span>Impossible de charger les offres. Réessayez dans un instant.</span><button onClick={onRetry} className={`inline-flex items-center gap-2 rounded border border-line bg-surface px-3 py-2 font-medium ${focus}`}><RotateCw className="size-4"/>Réessayer</button></div>;
-}
+const TRANSITIONS = {
+  OPEN: [
+    {
+      status: "CLOSED",
+      label: "Clôturer",
+      title: "Clôturer cette offre ?",
+      body: "L’offre disparaîtra de l’espace étudiant. Les candidatures déjà reçues resteront accessibles.",
+    },
+    {
+      status: "FILLED",
+      label: "Marquer comme pourvue",
+      title: "Marquer cette offre comme pourvue ?",
+      body: "L’offre sera indiquée comme pourvue et ne sera plus proposée aux étudiants.",
+    },
+  ],
+  CLOSED: [
+    {
+      status: "OPEN",
+      label: "Rouvrir",
+      title: "Rouvrir cette offre ?",
+      body: "L’offre redeviendra visible et les étudiants pourront à nouveau y postuler.",
+    },
+  ],
+  FILLED: [],
+};
 
-export default function CompanyOffers({ routeMode }) {
-  const { id: legacyId, offerId, mode: pathMode } = useParams();
-  const id = offerId ?? legacyId;
-  const mode = routeMode ?? pathMode;
-  const navigate = useNavigate();
-  const [offers, setOffers] = useState([]);
-  const [state, setState] = useState("loading");
-  const [filter, setFilter] = useState("ALL");
-  const [query, setQuery] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const [detail, setDetail] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState("");
-  const isForm = mode === "new" || mode === "edit";
-
-  const load = useCallback(() => {
-    if (id && mode !== "new") {
-      setState("loading");
-      getCompanyOffer(id).then((item) => { setDetail(item); setState("success"); }).catch(() => setState("error"));
-    } else {
-      setState("loading");
-      listMyOffers({ limit: 50 }).then((result) => { setOffers(result.items); setState("success"); }).catch(() => setState("error"));
-    }
-  }, [id, isForm, refresh]);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { document.title = id ? `${isForm ? (mode === "new" ? "Nouvelle offre" : "Modifier l’offre") : "Détail de l’offre"} · PFE Connect` : "Mes offres · PFE Connect"; }, [id, isForm, mode]);
-
-  const visibleOffers = useMemo(() => offers.filter((offer) =>
-    (filter === "ALL" || offer.status === filter) && offer.title.toLocaleLowerCase("fr").includes(query.toLocaleLowerCase("fr")),
-  ), [offers, filter, query]);
-  const stats = useMemo(() => ({ all: offers.length, open: offers.filter((o) => o.status === "OPEN").length, applications: offers.reduce((n, o) => n + o.applicationsCount, 0) }), [offers]);
-
-  async function changeStatus(status) {
-    if (!detail) return;
-    setSaving(true);
-    try { const updated = await setCompanyOfferStatus(detail.id, status); setDetail(updated); setRefresh((n) => n + 1); }
-    catch { setFormError("Le statut n’a pas pu être modifié."); }
-    finally { setSaving(false); }
-  }
-  async function submitOffer(event) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const title = String(data.get("title") ?? "").trim();
-    const description = String(data.get("description") ?? "").trim();
-    const location = String(data.get("location") ?? "").trim();
-    const duration = String(data.get("duration") ?? "").trim();
-    if (!title || !description || !location || !duration) { setFormError("Complétez tous les champs obligatoires."); return; }
-    setSaving(true); setFormError("");
-    try {
-      const saved = await saveCompanyOffer({ title, description, location, duration }, mode === "edit" ? id : undefined);
-      navigate(`/company/offres/${saved.id}`, { replace: true });
-    } catch { setFormError("L’offre n’a pas pu être enregistrée."); }
-    finally { setSaving(false); }
-  }
-
-  if (isForm) return (
-    <div className="mx-auto max-w-3xl">
-      <Link to={mode === "edit" ? `/company/offres/${id}` : "/company/offres"} className={`mb-8 inline-flex items-center gap-2 text-sm font-medium text-ink-soft hover:text-primary ${focus}`}><ArrowLeft className="size-4"/>Retour aux offres</Link>
-      <div className="mb-8"><p className="mb-2 text-xs font-semibold uppercase tracking-[.18em] text-accent-ink">Espace entreprise</p><h1 className="font-serif text-4xl font-semibold tracking-tight">{mode === "new" ? "Publier une offre" : "Modifier l’offre"}</h1><p className="mt-3 text-ink-soft">Présentez clairement le stage pour aider les étudiants à se projeter.</p></div>
-      {mode === "edit" && state === "loading" ? <div className="h-80 animate-pulse rounded bg-skeleton"/> : <form key={detail?.id ?? "new-offer"} onSubmit={submitOffer} className="flex flex-col gap-6 rounded border border-line bg-surface p-5 sm:p-8">
-        <label className="grid gap-2 text-sm font-medium">Intitulé du poste <span className="text-danger">*</span><input required name="title" defaultValue={detail?.title ?? ""} placeholder="Ex. Développeur Front-end React" className={`rounded border border-line bg-bg px-4 py-3 font-normal text-ink placeholder:text-ink-soft ${focus}`}/></label>
-        <div className="grid gap-6 sm:grid-cols-2"><label className="grid gap-2 text-sm font-medium">Lieu du stage <span className="text-danger">*</span><input required name="location" defaultValue={detail?.location ?? ""} placeholder="Ex. Tunis, hybride" className={`rounded border border-line bg-bg px-4 py-3 font-normal text-ink placeholder:text-ink-soft ${focus}`}/></label><label className="grid gap-2 text-sm font-medium">Durée <span className="text-danger">*</span><input required name="duration" defaultValue={detail?.duration ?? ""} placeholder="Ex. 4 à 6 mois" className={`rounded border border-line bg-bg px-4 py-3 font-normal text-ink placeholder:text-ink-soft ${focus}`}/></label></div>
-        <label className="grid gap-2 text-sm font-medium">Description et missions <span className="text-danger">*</span><textarea required name="description" rows={7} defaultValue={detail?.description ?? ""} placeholder="Décrivez les missions, les compétences recherchées et l’équipe…" className={`resize-y rounded border border-line bg-bg px-4 py-3 font-normal leading-relaxed text-ink placeholder:text-ink-soft ${focus}`}/></label>
-        {formError && <p role="alert" className="text-sm text-danger">{formError}</p>}
-        <div className="flex flex-wrap justify-end gap-3 border-t border-line pt-5"><Link to={mode === "edit" ? `/company/offres/${id}` : "/company/offres"} className={`rounded border border-line px-5 py-3 text-sm font-semibold hover:bg-bg ${focus}`}>Annuler</Link><button disabled={saving} className={`inline-flex items-center gap-2 rounded bg-primary px-5 py-3 text-sm font-semibold text-on-primary hover:opacity-90 disabled:opacity-50 ${focus}`}>{saving ? "Enregistrement…" : <>{mode === "new" ? "Publier l’offre" : "Enregistrer"}<ArrowUpRight className="size-4"/></>}</button></div>
-      </form>}
+function OfferLoadingRows() {
+  return (
+    <div className="company-offer-table-wrap" aria-busy="true" aria-label="Chargement des offres">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div className="company-offer-skeleton-row" key={index}>
+          <Skeleton className="company-offer-skeleton-title" />
+          <Skeleton className="company-offer-skeleton-meta" />
+          <Skeleton className="company-offer-skeleton-meta" />
+          <Skeleton className="company-offer-skeleton-badge" />
+          <Skeleton className="company-offer-skeleton-action" />
+        </div>
+      ))}
     </div>
   );
+}
 
-  if (id) return <div className="mx-auto max-w-4xl">{state === "loading" ? <div className="h-96 animate-pulse rounded bg-skeleton"/> : state === "error" ? <ErrorState onRetry={() => setRefresh((n) => n + 1)}/> : !detail ? <div className="rounded border border-line bg-surface p-10 text-center"><h1 className="font-serif text-3xl">Offre introuvable</h1><Link to="/company/offres" className="mt-5 inline-block text-primary underline">Retour aux offres</Link></div> : <>
-    <Link to="/company/offres" className={`mb-8 inline-flex items-center gap-2 text-sm font-medium text-ink-soft hover:text-primary ${focus}`}><ArrowLeft className="size-4"/>Toutes les offres</Link>
-    <section className="rounded bg-hero p-6 sm:p-10"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="mb-4 text-xs font-semibold uppercase tracking-[.18em] text-accent-ink">Offre de stage</p><h1 className="max-w-3xl font-serif text-4xl font-semibold tracking-tight sm:text-5xl">{detail.title}</h1><div className="mt-5 flex flex-wrap gap-4 text-sm text-ink-soft"><span className="inline-flex items-center gap-2"><MapPin className="size-4"/>{detail.location || "Lieu à préciser"}</span><span className="inline-flex items-center gap-2"><Clock3 className="size-4"/>{detail.duration || "Durée à préciser"}</span><span className="inline-flex items-center gap-2"><CalendarDays className="size-4"/>Publiée le {dateLabel(detail.createdAt)}</span></div></div><Badge status={detail.status}/></div><div className="mt-8 flex flex-wrap gap-3"><Link to={`/company/offres/${id}/modifier`} className={`inline-flex items-center gap-2 rounded bg-primary px-5 py-3 text-sm font-semibold text-on-primary ${focus}`}><Pencil className="size-4"/>Modifier l’offre</Link>{detail.status === "OPEN" ? <button disabled={saving} onClick={() => changeStatus("CLOSED")} className={`rounded border border-line bg-surface px-5 py-3 text-sm font-semibold hover:bg-bg disabled:opacity-50 ${focus}`}>Fermer l’offre</button> : <button disabled={saving} onClick={() => changeStatus("OPEN")} className={`rounded border border-primary px-5 py-3 text-sm font-semibold text-primary hover:bg-primary-tint disabled:opacity-50 ${focus}`}>Réouvrir l’offre</button>}</div></section>
-    {formError && <p role="alert" className="mt-4 text-sm text-danger">{formError}</p>}
-    <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_18rem]"><section className="rounded border border-line bg-surface p-6 sm:p-8"><h2 className="font-serif text-2xl font-semibold">À propos du stage</h2><p className="mt-5 whitespace-pre-line text-[15px] leading-7 text-ink-soft">{detail.description || "Aucune description renseignée pour cette offre."}</p></section><aside className="flex flex-col gap-4"><div className="rounded border border-line bg-surface p-6"><p className="text-sm text-ink-soft">Candidatures reçues</p><p className="mt-2 font-serif text-4xl font-semibold">{detail.applicationsCount}</p><Link to={`/company/candidatures?offer=${detail.id}`} className={`mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline ${focus}`}>Voir les candidatures<ChevronRight className="size-4"/></Link></div><div className="rounded border border-line bg-surface p-6"><p className="font-semibold">Visibilité</p><p className="mt-2 text-sm leading-6 text-ink-soft">{detail.status === "OPEN" ? "Cette offre est visible par les étudiants." : "Cette offre n’est pas proposée aux nouvelles candidatures."}</p></div></aside></div>
-  </>}</div>;
+function formatDate(value) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
 
-  return <div className="flex flex-col gap-8">
-    <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="mb-3 text-xs font-semibold uppercase tracking-[.18em] text-accent-ink">Espace entreprise</p><h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">Mes offres</h1><p className="mt-3 text-ink-soft">Gérez vos offres et suivez les candidatures reçues.</p></div><Link to="/company/offres/nouvelle" className={`inline-flex items-center gap-2 rounded bg-primary px-5 py-3.5 text-sm font-semibold text-on-primary transition-opacity hover:opacity-90 ${focus}`}><Plus className="size-4"/>Publier une offre</Link></div>
-    {state === "loading" ? <div className="grid gap-4 sm:grid-cols-3"><div className="h-28 animate-pulse rounded bg-skeleton"/><div className="h-28 animate-pulse rounded bg-skeleton"/><div className="h-28 animate-pulse rounded bg-skeleton"/></div> : state === "error" ? <ErrorState onRetry={() => setRefresh((n) => n + 1)}/> : <>
-      <div className="grid gap-3 sm:grid-cols-3"><div className="rounded border border-line bg-surface p-5"><p className="text-sm text-ink-soft">Toutes les offres</p><p className="mt-2 font-serif text-3xl font-semibold">{stats.all}</p></div><div className="rounded border border-line bg-surface p-5"><p className="text-sm text-ink-soft">Offres ouvertes</p><p className="mt-2 font-serif text-3xl font-semibold text-primary">{stats.open}</p></div><div className="rounded border border-line bg-surface p-5"><p className="text-sm text-ink-soft">Candidatures reçues</p><p className="mt-2 font-serif text-3xl font-semibold">{stats.applications}</p></div></div>
-      <div className="flex flex-col gap-5 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between"><div role="tablist" aria-label="Filtrer les offres" className="flex flex-wrap gap-2">{statusOptions.map((option) => <button key={option.value} role="tab" aria-selected={filter === option.value} onClick={() => setFilter(option.value)} className={`rounded px-4 py-2 text-sm font-medium transition-colors ${focus} ${filter === option.value ? "bg-primary text-on-primary" : "border border-line bg-surface text-ink-soft hover:text-ink"}`}>{option.label}{option.value === "ALL" ? ` · ${stats.all}` : option.value === "OPEN" ? ` · ${stats.open}` : ""}</button>)}</div><label className="relative block w-full sm:max-w-xs"><span className="sr-only">Rechercher une offre</span><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-soft"/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une offre" className={`w-full rounded border border-line bg-surface py-2.5 pl-10 pr-3 text-sm placeholder:text-ink-soft ${focus}`}/></label></div>
-      {visibleOffers.length === 0 ? <div className="rounded border border-dashed border-line bg-surface px-6 py-14 text-center"><span className="mx-auto grid size-12 place-items-center rounded bg-primary-tint text-primary"><BriefcaseBusiness className="size-5"/></span><h2 className="mt-4 font-serif text-2xl font-semibold">{query ? "Aucun résultat" : filter === "ALL" ? "Aucune offre publiée" : "Aucune offre dans cette catégorie"}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-soft">{query ? "Essayez un autre intitulé ou modifiez les filtres." : "Publiez une offre de stage pour commencer à recevoir des candidatures."}</p>{!query && filter === "ALL" && <Link to="/company/offres/nouvelle" className={`mt-5 inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary ${focus}`}><Plus className="size-4"/>Publier une offre</Link>}</div> : <div className="grid gap-4 xl:grid-cols-2">{visibleOffers.map((offer) => <article key={offer.id} className="group rounded border border-line bg-surface p-5 transition-shadow hover:shadow-sm sm:p-6"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><Badge status={offer.status}/><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight"><Link to={`/company/offres/${offer.id}`} className={`rounded hover:text-primary ${focus}`}>{offer.title}</Link></h2></div><Link to={`/company/offres/${offer.id}/modifier`} aria-label={`Modifier ${offer.title}`} className={`grid size-9 shrink-0 place-items-center rounded text-ink-soft hover:bg-primary-tint hover:text-primary ${focus}`}><Pencil className="size-4"/></Link></div><div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-soft"><span className="inline-flex items-center gap-2"><Users className="size-4"/>{offer.applicationsCount} candidatures</span><span className="inline-flex items-center gap-2"><CalendarDays className="size-4"/>Publiée le {dateLabel(offer.createdAt)}</span></div><div className="mt-5 flex items-center justify-between border-t border-line pt-4"><span className="text-xs text-ink-soft">{offer.status === "OPEN" ? "Visible par les étudiants" : offer.status === "FILLED" ? "Poste pourvu" : "Offre clôturée"}</span><Link to={`/company/offres/${offer.id}`} className={`inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline ${focus}`}>Détails<ChevronRight className="size-4"/></Link></div></article>)}</div>}
-    </>}
-  </div>;
+function Stat({ label, value }) {
+  return (
+    <div className="company-offer-stat">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+export default function CompanyOffers() {
+  const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
+  const [offers, setOffers] = useState([]);
+  const [stats, setStats] = useState({ total: 0, open: 0, filled: 0, closed: 0 });
+  const [applicationCounts, setApplicationCounts] = useState({});
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [dialog, setDialog] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const load = useCallback(
+    async ({ keepError = false } = {}) => {
+      if (!keepError) setError(null);
+      setLoading(true);
+      try {
+        const page = await listMyOffers({ status: status || undefined, limit: 5 });
+        setOffers(page.items);
+        setNextCursor(page.nextCursor);
+        setStats(getMyOfferStats());
+        setApplicationCounts(getOfferApplicationCounts());
+      } catch (loadError) {
+        setError(loadError);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [status],
+  );
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) load();
+    });
+    return () => {
+      active = false;
+    };
+  }, [load, reloadKey]);
+
+  const visibleOffers = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("fr");
+    if (!query) return offers;
+    return offers.filter((offer) => offer.title.toLocaleLowerCase("fr").includes(query));
+  }, [offers, search]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await listMyOffers({
+        status: status || undefined,
+        limit: 5,
+        cursor: nextCursor,
+      });
+      setOffers((current) => [...current, ...page.items]);
+      setNextCursor(page.nextCursor);
+    } catch (loadError) {
+      setError(loadError);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function confirmTransition() {
+    if (!dialog || busy) return;
+    setBusy(true);
+    try {
+      await updateOffer(dialog.offer.offerId, { status: dialog.transition.status });
+      setToast(`L’offre a été ${dialog.transition.status === "OPEN" ? "rouverte" : dialog.transition.status === "CLOSED" ? "clôturée" : "marquée comme pourvue"}.`);
+      setDialog(null);
+      setReloadKey((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError);
+      setDialog(null);
+      if (actionError.status === 409) await load({ keepError: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const retry = () => setReloadKey((value) => value + 1);
+  const canShowData = !error || error.status === 409;
+
+  return (
+    <section className="company-offers-page">
+      <PageHeader
+        eyebrow="Espace entreprise"
+        title="Mes offres"
+        subtitle="Consultez et gérez les offres publiées par votre entreprise."
+        action={
+          <Link className="company-primary-link" to="/company/offres/nouvelle">
+            <Plus size={17} aria-hidden="true" />
+            Nouvelle offre
+          </Link>
+        }
+      />
+
+      {error && (
+        <ErrorBanner
+          title="Impossible de charger ou modifier les offres"
+          message={error.message || "Veuillez réessayer."}
+          onRetry={retry}
+        />
+      )}
+
+      <div className="company-offer-stats" aria-label="Statistiques des offres">
+        {loading || (error && error.status !== 409)
+          ? Array.from({ length: 4 }, (_, index) => (
+              <div className="company-offer-stat" key={index}>
+                <Skeleton className="company-offer-stat-number" />
+                <Skeleton className="company-offer-stat-label" />
+              </div>
+            ))
+          : <>
+              <Stat label="Total" value={stats.total} />
+              <Stat label="Ouvertes" value={stats.open} />
+              <Stat label="Pourvues" value={stats.filled} />
+              <Stat label="Clôturées" value={stats.closed} />
+            </>}
+      </div>
+
+      <div className="company-offer-filters">
+        <label className="company-offer-search">
+          <Search size={16} aria-hidden="true" />
+          <span className="sr-only">Rechercher par titre</span>
+          <input
+            type="search"
+            placeholder="Rechercher par titre"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label className="company-offer-status-filter">
+          <span>Statut</span>
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">Toutes</option>
+            {COMPANY_OFFER_FILTERS.map((filter) => (
+              <option key={filter.value} value={filter.value}>{filter.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {loading ? (
+        <OfferLoadingRows />
+      ) : !canShowData ? null : visibleOffers.length ? (
+        <div className="company-offer-table-wrap">
+          <table className="company-offer-table">
+            <caption className="sr-only">Liste de vos offres de stage</caption>
+            <thead>
+              <tr>
+                <th scope="col">Offre</th>
+                <th scope="col">Mode et durée</th>
+                <th scope="col">Publication</th>
+                <th scope="col">Statut</th>
+                <th scope="col">Candidatures</th>
+                <th scope="col"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleOffers.map((offer) => (
+                <tr key={offer.offerId}>
+                  <th scope="row">
+                    <Link className="company-offer-title" to={`/company/offres/${offer.offerId}`}>
+                      {offer.title}
+                    </Link>
+                    <span className="company-offer-location">
+                      <MapPin size={14} aria-hidden="true" />
+                      {offer.gouvernorat}
+                    </span>
+                  </th>
+                  <td>
+                    <span className="company-offer-meta">
+                      <span>{WORK_MODE_LABELS[offer.workMode] || "Mode à préciser"}</span>
+                      <span><Clock size={14} aria-hidden="true" />{offer.durationWeeks} semaines</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span className="company-offer-date">
+                      <CalendarDays size={14} aria-hidden="true" />
+                      {formatDate(offer.createdAt)}
+                    </span>
+                  </td>
+                  <td><StatusBadge status={offer.status} label={offer.status === "CLOSED" ? "Clôturée" : undefined} /></td>
+                  <td>
+                    <Link className="company-applicant-count" to={`/company/candidatures?offer=${encodeURIComponent(offer.offerId)}`}>
+                      {applicationCounts[offer.offerId] || 0}
+                    </Link>
+                  </td>
+                  <td>
+                    <div className="company-offer-row-actions">
+                      {offer.status === "FILLED" ? (
+                        <Link className="company-small-link" to={`/company/offres/${offer.offerId}`}>
+                          Voir
+                        </Link>
+                      ) : (
+                        <>
+                          <Link className="company-small-link" to={`/company/offres/${offer.offerId}/modifier`}>
+                            Modifier
+                          </Link>
+                          {(TRANSITIONS[offer.status] || []).map((transition) => (
+                            <button
+                              className="company-text-button"
+                              type="button"
+                              key={transition.status}
+                              onClick={() => setDialog({ offer, transition })}
+                            >
+                              {transition.label}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState
+          title={offers.length ? "Aucune offre ne correspond à ces critères" : "Aucune offre publiée"}
+          message={offers.length ? "Essayez une autre recherche ou un autre statut." : "Publiez une offre pour recevoir des candidatures."}
+          actionLabel="Nouvelle offre"
+          actionTo="/company/offres/nouvelle"
+        />
+      )}
+
+      {nextCursor && (
+        <button
+          className="company-load-more"
+          type="button"
+          onClick={loadMore}
+          aria-busy={loadingMore}
+        >
+          {loadingMore ? "Chargement…" : "Charger plus"}
+        </button>
+      )}
+
+      {dialog && (
+        <ConfirmDialog
+          open
+          title={dialog.transition.title}
+          body={dialog.transition.body}
+          confirmLabel={busy ? "Enregistrement…" : dialog.transition.label}
+          onCancel={() => setDialog(null)}
+          onConfirm={confirmTransition}
+        />
+      )}
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
+    </section>
+  );
 }

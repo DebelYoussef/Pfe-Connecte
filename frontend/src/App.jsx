@@ -2,6 +2,9 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import CompleteProfile from "./components/CompleteProfile";
 import CompanyHome from "./components/Company/CompanyHome";
 import CompanyLayout from "./components/Company/CompanyLayout";
+import CompanyOfferDetail from "./components/Company/CompanyOfferDetail";
+import CompanyOfferForm from "./components/Company/CompanyOfferForm";
+import CompanyOffers from "./components/Company/CompanyOffers";
 import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./components/Signup";
@@ -122,18 +125,18 @@ export default function App() {
         }
       >
         <Route index element={<CompanyHome />} />
-        <Route path="offres" element={<CompanyPlaceholder title="Mes offres" />} />
+        <Route path="offres" element={<CompanyOffers />} />
         <Route
           path="offres/nouvelle"
-          element={<CompanyPlaceholder title="Nouvelle offre" />}
+          element={<CompanyOfferForm />}
         />
         <Route
           path="offres/:offerId"
-          element={<CompanyPlaceholder title="Détail de l’offre" />}
+          element={<CompanyOfferDetail />}
         />
         <Route
           path="offres/:offerId/modifier"
-          element={<CompanyPlaceholder title="Modifier une offre" />}
+          element={<CompanyOfferForm />}
         />
         <Route
           path="candidatures"

@@ -17,7 +17,7 @@ import {
   markCompanyNotificationRead,
 } from "../../services.company";
 
-const navigation = [
+const navigation = () => [
   { to: "/company", label: "Accueil", icon: LayoutDashboard, end: true },
   { to: "/company/offres", label: "Mes offres", icon: BriefcaseBusiness },
   {
@@ -65,7 +65,7 @@ export default function CompanyLayout() {
   return (
     <AppShell
       roleLabel="Entreprise"
-      navItems={navigation}
+      navItems={navigation()}
       profilePath="/company/profil"
       notificationRouteMap={notificationRouteMap}
       notificationService={notificationService}
