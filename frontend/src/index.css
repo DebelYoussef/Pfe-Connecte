@@ -5313,3 +5313,297 @@ a.company-dashboard-stat:hover {
     display: none;
   }
 }
+
+.company-conventions-page,
+.company-convention-detail-page {
+  display: grid;
+  gap: 20px;
+}
+.company-convention-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.company-convention-stat {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.company-convention-stat strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.company-convention-stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.company-convention-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.company-convention-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.company-convention-tabs button[aria-selected="true"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+.company-convention-tabs button > span {
+  font-variant-numeric: tabular-nums;
+}
+.company-convention-list {
+  display: grid;
+  gap: 10px;
+}
+.company-convention-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.company-convention-row-main {
+  min-width: 0;
+}
+.company-convention-row-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.company-convention-row-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.company-convention-sign-marker {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+}
+.company-convention-offer {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.company-convention-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.company-convention-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.company-convention-view {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.company-convention-view:hover {
+  border-color: var(--primary);
+}
+.company-convention-skeletons {
+  display: grid;
+  gap: 10px;
+}
+.company-convention-skeleton {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.company-convention-skeleton-title {
+  width: 40%;
+  height: 17px;
+}
+.company-convention-skeleton-detail {
+  width: 70%;
+  height: 12px;
+}
+.company-convention-skeleton-action {
+  width: 65px;
+  height: 34px;
+  justify-self: end;
+}
+.company-convention-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.company-convention-back:hover {
+  color: var(--primary);
+}
+.company-convention-detail-skeleton {
+  display: grid;
+  gap: 18px;
+}
+.company-convention-detail-heading {
+  width: 45%;
+  height: 44px;
+}
+.company-convention-detail-tracker {
+  width: 100%;
+  height: 58px;
+}
+.company-convention-detail-skeleton > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+}
+.company-convention-detail-document {
+  width: 100%;
+  height: 490px;
+}
+.company-convention-detail-aside {
+  width: 100%;
+  height: 230px;
+}
+.convention-tracker-waiting {
+  margin: -12px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.danger-outline-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--danger);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.danger-outline-button:hover {
+  background: var(--danger-tint);
+}
+.danger-outline-button:disabled {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.company-convention-signature-fields {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.company-convention-signature-fields p {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+.company-convention-signature-fields code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.company-convention-signature-fields label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.company-convention-signature-fields input {
+  margin: 3px 0 0;
+  accent-color: var(--primary);
+}
+.company-convention-rejection-field {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.company-convention-rejection-field textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.company-convention-rejection-field textarea:focus {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.company-convention-rejection-field small {
+  color: var(--muted);
+  font-weight: 400;
+  text-align: right;
+}
+@media (max-width: 760px) {
+  .company-convention-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .company-convention-detail-skeleton > div {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .company-convention-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .company-convention-meta {
+    display: grid;
+  }
+}
+@media (max-width: 420px) {
+  .company-convention-stats {
+    grid-template-columns: 1fr;
+  }
+}

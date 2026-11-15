@@ -303,7 +303,12 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
       ? { currentActorId: companyId, stepSince: daysAgo(days - 1) }
       : {}),
     ...(state === "DRAFT"
-      ? { currentActorId: studentActorId, stepSince: daysAgo(days - 1) }
+      ? {
+          currentActorId: modified
+            ? `RESP#${student.etab}`
+            : studentActorId,
+          stepSince: daysAgo(days - 1),
+        }
       : {}),
     ...(state === "APPROVED" ? { finalSha256: "c".repeat(64), approvedAt: daysAgo(days - 2) } : {}),
     createdAt,
@@ -981,12 +986,285 @@ export async function listCompanyApplications({
 
 export async function listMyConventions({ state, limit = 100, cursor = null } = {}) {
   const companyId = currentCompanyId();
+  if (REAL.conventions) {
+    const query = new URLSearchParams();
+    if (state) query.set("state", state);
+    if (limit) query.set("limit", String(limit));
+    if (cursor) query.set("cursor", cursor);
+    const result = await api(`/v1/conventions${query.size ? `?${query}` : ""}`);
+    return {
+      items: (result.items || []).filter(
+        (convention) => convention.companyId === companyId,
+      ),
+      nextCursor: result.nextCursor ?? null,
+    };
+  }
   const store = storeFor(companyId);
   const items = store.conventions
     .filter((convention) => convention.companyId === companyId && (!state || convention.state === state))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map((convention) => enrichConvention(store, convention));
   return wait(page(items, limit, cursor));
+}
+
+export async function listConventions(options = {}) {
+  return listMyConventions(options);
+}
+
+function findCompanyConvention(store, companyId, conventionId) {
+  const convention = store.conventions.find(
+    (item) => item.conventionId === conventionId,
+  );
+  if (convention && convention.companyId !== companyId)
+    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
+  if (convention) return convention;
+
+  const belongsToAnotherCompany = [...stores.values()].some((otherStore) =>
+    otherStore.conventions.some((item) => item.conventionId === conventionId),
+  );
+  if (belongsToAnotherCompany)
+    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
+  throw fail(404, "NOT_FOUND", "Cette convention n’existe pas.");
+}
+
+export async function getConvention(conventionId) {
+  const companyId = currentCompanyId();
+  if (REAL.conventions) {
+    const convention = await api(
+      `/v1/conventions/${encodeURIComponent(conventionId)}`,
+    );
+    if (convention.companyId !== companyId)
+      throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
+    return convention;
+  }
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  return wait(copy(enrichConvention(store, convention)));
+}
+
+export async function signConvention(conventionId) {
+  const companyId = currentCompanyId();
+  if (REAL.conventions) {
+    const updated = await api(
+      `/v1/conventions/${encodeURIComponent(conventionId)}/sign`,
+      { method: "POST" },
+    );
+    notifyCompanyDataChanged();
+    return updated;
+  }
+
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  if (
+    convention.state !== "SIGNED_STUDENT" ||
+    convention.currentActorId !== companyId
+  )
+    throw fail(409, "CONFLICT", "La convention n’attend pas votre signature.");
+
+  const timestamp = new Date().toISOString();
+  convention.state = "SIGNED_COMPANY";
+  convention.currentActorId = `RESP#${convention.etab}`;
+  convention.stepSince = timestamp;
+  convention.events.push(
+    createEvent(
+      convention.conventionId,
+      "SIGNED",
+      companyId,
+      "ENT",
+      "SIGNED_STUDENT",
+      "SIGNED_COMPANY",
+      timestamp,
+      { pdfSha256: convention.pdfSha256 },
+    ),
+  );
+  notifyCompanyDataChanged();
+  return wait(copy(enrichConvention(store, convention)));
+}
+
+export async function rejectConvention(conventionId, { reason } = {}) {
+  const companyId = currentCompanyId();
+  const normalizedReason = String(reason ?? "").trim();
+  if (!normalizedReason || normalizedReason.length > 1000)
+    throw fail(
+      400,
+      "VALIDATION_ERROR",
+      "Le motif doit contenir de 1 à 1 000 caractères.",
+      { fields: ["reason"] },
+    );
+  if (REAL.conventions) {
+    const updated = await api(
+      `/v1/conventions/${encodeURIComponent(conventionId)}/reject`,
+      { method: "POST", body: { reason: normalizedReason } },
+    );
+    notifyCompanyDataChanged();
+    return updated;
+  }
+
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY"].includes(convention.state))
+    throw fail(409, "CONFLICT", "Cette convention ne peut plus être refusée.");
+
+  const previousState = convention.state;
+  const timestamp = new Date().toISOString();
+  // NOT IN API YET: signature invalidation is represented on events for the mock timeline.
+  convention.events = convention.events.map((event) =>
+    event.type === "SIGNED" ? { ...event, invalidated: true } : event,
+  );
+  convention.state = "DRAFT";
+  convention.currentActorId = `RESP#${convention.etab}`;
+  convention.stepSince = timestamp;
+  convention.rejectionReason = normalizedReason;
+  convention.events.push(
+    createEvent(
+      convention.conventionId,
+      "REJECTED",
+      companyId,
+      "ENT",
+      previousState,
+      "DRAFT",
+      timestamp,
+      { reason: normalizedReason },
+    ),
+  );
+  notifyCompanyDataChanged();
+  return wait(copy(enrichConvention(store, convention)));
+}
+
+export async function getConventionPdfUrl(conventionId) {
+  const companyId = currentCompanyId();
+  if (REAL.conventions)
+    return api(
+      `/v1/conventions/${encodeURIComponent(conventionId)}/pdf-url`,
+    );
+
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  const lines = [
+    "CONVENTION DE STAGE",
+    convention.shortRef,
+    ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 4),
+    `Empreinte : ${convention.pdfSha256}`,
+  ]
+    .map((line) =>
+      line
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\x20-\x7E]/g, "?")
+        .replace(/[\\()]/g, "\\$&"),
+    )
+    .slice(0, 7);
+  const textStream = [
+    "BT",
+    "/F1 12 Tf",
+    "50 760 Td",
+    ...lines.flatMap((line, index) => [
+      index ? "0 -18 Td" : "",
+      `(${line}) Tj`,
+    ]),
+    "ET",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    `<< /Length ${textStream.length} >>\nstream\n${textStream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const crossReferenceOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceOffset}\n%%EOF`;
+  return wait({
+    url: `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`,
+    expiresIn: 300,
+  });
+}
+
+export async function simulateConventionApproval(conventionId) {
+  const companyId = currentCompanyId();
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  if (
+    convention.state !== "SIGNED_COMPANY" ||
+    convention.currentActorId !== `RESP#${convention.etab}`
+  )
+    throw fail(409, "CONFLICT", "La convention n’attend pas l’approbation du responsable.");
+
+  const timestamp = new Date().toISOString();
+  convention.state = "APPROVED";
+  convention.finalSha256 = "c".repeat(64);
+  convention.approvedAt = timestamp;
+  delete convention.currentActorId;
+  delete convention.stepSince;
+  convention.events.push(
+    createEvent(
+      convention.conventionId,
+      "APPROVED",
+      `RESP#${convention.etab}`,
+      "RESP",
+      "SIGNED_COMPANY",
+      "APPROVED",
+      timestamp,
+      { pdfSha256: convention.finalSha256 },
+    ),
+  );
+  notifyCompanyDataChanged();
+  return wait(copy(enrichConvention(store, convention)));
+}
+
+export async function simulateStudentConventionModification(
+  conventionId,
+  renderedText,
+) {
+  const companyId = currentCompanyId();
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY", "APPROVED"].includes(convention.state))
+    throw fail(409, "CONFLICT", "Cette convention ne peut pas être modifiée à cette étape.");
+
+  const oldHash = convention.pdfSha256;
+  const newText =
+    String(renderedText ?? convention.renderedText).trim() || convention.renderedText;
+  const newHash = `${oldHash.slice(0, 62)}${oldHash.slice(-2) === "ff" ? "00" : "ff"}`;
+  const previousState = convention.state;
+  const timestamp = new Date().toISOString();
+  convention.events = convention.events.map((event) =>
+    event.type === "SIGNED" ? { ...event, invalidated: true } : event,
+  );
+  convention.renderedText = newText;
+  convention.pdfSha256 = newHash;
+  convention.state = "DRAFT";
+  convention.currentActorId = `RESP#${convention.etab}`;
+  convention.stepSince = timestamp;
+  delete convention.finalSha256;
+  delete convention.approvedAt;
+  delete convention.rejectionReason;
+  convention.events.push(
+    // NOT IN API YET: MODIFIED events and their old/new hash metadata are mock-only.
+    createEvent(
+      convention.conventionId,
+      "MODIFIED",
+      convention.studentId,
+      "ETU",
+      previousState,
+      "DRAFT",
+      timestamp,
+      { oldHash, newHash },
+    ),
+  );
+  notifyCompanyDataChanged();
+  return wait(copy(enrichConvention(store, convention)));
 }
 
 export async function listMyReports({ status, limit = 100, cursor = null } = {}) {
@@ -1067,7 +1345,10 @@ export function getCompanyConventionsToSignCount() {
   const companyId = getUser()?.userId;
   return (
     store?.conventions.filter(
-      (convention) => convention.companyId === companyId && convention.currentActorId === companyId,
+      (convention) =>
+        convention.companyId === companyId &&
+        convention.state === "SIGNED_STUDENT" &&
+        convention.currentActorId === companyId,
     ).length || 0
   );
 }

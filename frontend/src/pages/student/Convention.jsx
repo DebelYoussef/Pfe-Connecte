@@ -1,12 +1,15 @@
-import { Check, CheckCircle2, Copy, Download, FileText, Lock, QrCode, XCircle } from 'lucide-react'
+import { Download, Lock, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import PageHeader from '../../components/ui/PageHeader'
 import LockedPage from '../../components/LockedPage'
 import StatusBadge from '../../components/ui/StatusBadge'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Toast from '../../components/ui/Toast'
 import Tooltip from '../../components/ui/Tooltip'
+import ConventionDocument from '../../components/convention/ConventionDocument'
+import ConventionTracker from '../../components/convention/ConventionTracker'
+import ConventionTimeline from '../../components/convention/ConventionTimeline'
+import VerificationCard from '../../components/convention/VerificationCard'
 import { getUser } from '../../auth'
 import { getConventionPdfUrl, getConventionTextHash, getMe, getMyConvention, saveConventionStudentInfo, signConvention } from '../../services'
 
@@ -39,15 +42,6 @@ function getStudentTurnMessage(convention, signatureEvents) {
   if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'RESP')) return 'En attente de l’approbation du responsable.'
   const role = String(convention.currentActorId ?? '').split('#')[0]
   return roleLabels[role] ? `C’est au tour de ${roleLabels[role]}.` : 'La signature n’est pas disponible à cette étape.'
-}
-
-function getEventTitle(event) {
-  if (event.type === 'SUBMITTED') return 'Convention transmise'
-  if (event.type === 'SIGNED') return `Convention signée par ${roleLabels[event.actorRole] ?? event.actorRole}`
-  if (event.type === 'APPROVED') return 'Convention approuvée'
-  if (event.type === 'REJECTED') return `Convention refusée par ${roleLabels[event.actorRole] ?? event.actorRole}`
-  if (event.type === 'MODIFIED') return 'Informations modifiées par l’étudiant'
-  return event.message || 'Événement de convention'
 }
 
 function getProfileValue(profile, session, key) {
@@ -202,8 +196,6 @@ export default function Convention() {
     || (index < 3 && signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === step.actorRole)))
   const canRequestModification = hasSignature && convention.state !== 'DRAFT' && !editingAfterSignature
   const turnMessage = getStudentTurnMessage(convention, signatureEvents)
-  const approvalEvent = [...events].reverse().find((event) => event.type === 'APPROVED')
-  const approvedAt = convention.approvedAt || approvalEvent?.timestamp
 
   return (
     <section className="student-page convention-page">
@@ -217,14 +209,7 @@ export default function Convention() {
         <div className="convention-rejected" role="alert"><strong>Convention refusée</strong><span>{convention.rejectionReason}</span><small>Le responsable corrige le texte, vous serez notifié lorsqu’elle sera renvoyée.</small></div>
       ) : null}
       {error && <div className="convention-error" role="alert">{error}</div>}
-      <div className="convention-tracker" aria-label="Étapes de la convention">
-        {trackerSteps.map((step, index) => (
-          <div className={trackerDone[index] ? 'tracker-step done' : 'tracker-step'} key={step.label} aria-current={trackerDone[index] ? 'step' : undefined}>
-            <span>{trackerDone[index] ? <Check aria-hidden="true" size={15} /> : index + 1}</span>
-            <small>{step.label}</small>
-          </div>
-        ))}
-      </div>
+      <ConventionTracker doneSteps={trackerDone} />
       <div className="convention-grid">
         <div className="convention-main-column">
           <section className="info-card convention-student-info">
@@ -262,23 +247,12 @@ export default function Convention() {
               {informationEditable && <button className="submit-button" type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer mes informations'}</button>}
             </form>
           </section>
-          <article className="paper-document">
-            <div className="paper-header">
-              <strong>CONVENTION DE STAGE</strong>
-              <span>{convention.shortRef}<br />Version {convention.templateVersion}</span>
-            </div>
-            <h2>Convention de stage</h2>
-            <p className="document-rendered-text">{convention.renderedText}</p>
-            <p>La durée et les conditions du stage sont définies avec l’entreprise d’accueil et l’établissement universitaire.</p>
-            <div className="document-fingerprint">
-              <div><strong>Empreinte du document</strong><code>{convention.pdfSha256?.slice(0, 12) || '—'}</code></div>
-              <button type="button" aria-label="Copier l’empreinte du document" onClick={() => copyValue(convention.pdfSha256, 'Empreinte')}><Copy aria-hidden="true" size={14} />Copier</button>
-            </div>
-            <p className={integrityVerified ? 'integrity-line verified' : 'integrity-line'} role="status">
-              {integrityVerified ? <CheckCircle2 aria-hidden="true" size={16} /> : <XCircle aria-hidden="true" size={16} />}
-              {integrityVerified ? 'Intégrité vérifiée' : integrityHash ? 'Intégrité non vérifiée' : 'Vérification de l’intégrité…'}
-            </p>
-          </article>
+          <ConventionDocument
+            convention={convention}
+            integrityVerified={integrityVerified}
+            integrityHash={integrityHash}
+            onCopy={copyValue}
+          />
           <div className="document-actions convention-action-bar">
             {canSign ? (
               <button className="submit-button" type="button" onClick={() => setSignDialogOpen(true)}>Signer la convention</button>
@@ -302,33 +276,9 @@ export default function Convention() {
           </div>
           <div className="info-card convention-history">
             <h2>Historique</h2>
-            {events.length ? (
-              <div className="convention-timeline">
-                {events.map((event, index) => (
-                  <div className={`timeline-event${event.invalidated ? ' invalidated' : ''}`} key={`${event.timestamp}-${index}`}>
-                    <span />
-                    <div>
-                      <strong>{getEventTitle(event)}</strong>
-                      {event.type === 'MODIFIED' && <small className="modified-hashes">Empreinte précédente <code>{event.oldHash}</code> · nouvelle <code>{event.newHash}</code></small>}
-                      {event.invalidated && <small>Signature annulée après modification</small>}
-                      <small>{formatDate(event.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="timeline-empty">Aucun événement enregistré pour le moment.</p>}
+            <ConventionTimeline events={events} />
           </div>
-          <div className="info-card verify-card">
-            <h2>Vérification</h2>
-            {convention.state === 'APPROVED' ? (
-              <>
-                <div className="qr-placeholder" aria-label="Code QR de vérification"><QrCode aria-hidden="true" size={30} /></div>
-                <div className="verification-reference"><code>{convention.shortRef}</code><button type="button" aria-label="Copier la référence de vérification" onClick={() => copyValue(convention.shortRef, 'Référence')}><Copy aria-hidden="true" size={14} /></button></div>
-                <p>Approuvée le {formatDate(approvedAt)}</p>
-                <Link to={`/verify/${convention.conventionId}`}>Ouvrir la page de vérification</Link>
-              </>
-            ) : <p className="verification-invalid"><XCircle aria-hidden="true" size={16} />Non valide : la convention n’est pas encore approuvée</p>}
-          </div>
+          <VerificationCard convention={convention} onCopy={copyValue} />
         </aside>
       </div>
       {signDialogOpen && (

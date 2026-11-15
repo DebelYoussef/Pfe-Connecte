@@ -2,6 +2,8 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import CompleteProfile from "./components/CompleteProfile";
 import CompanyHome from "./components/Company/CompanyHome";
 import CompanyApplications from "./components/Company/CompanyApplications";
+import CompanyConvention from "./components/Company/CompanyConvention";
+import CompanyConventions from "./components/Company/CompanyConventions";
 import CompanyLayout from "./components/Company/CompanyLayout";
 import CompanyOfferDetail from "./components/Company/CompanyOfferDetail";
 import CompanyOfferForm from "./components/Company/CompanyOfferForm";
@@ -145,11 +147,11 @@ export default function App() {
         />
         <Route
           path="conventions"
-          element={<CompanyPlaceholder title="Conventions" />}
+          element={<CompanyConventions />}
         />
         <Route
           path="conventions/:conventionId"
-          element={<CompanyPlaceholder title="Convention" />}
+          element={<CompanyConvention />}
         />
         <Route
           path="journaux"
