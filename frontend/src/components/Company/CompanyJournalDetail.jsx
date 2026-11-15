@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Check } from "lucide-react";
+import { CompanyAvatar } from "./CompanyVisuals";
 import ErrorBanner from "../ErrorBanner";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import EmptyState from "../ui/EmptyState";
-import PageHeader from "../ui/PageHeader";
 import Skeleton from "../ui/Skeleton";
 import StatusBadge from "../ui/StatusBadge";
 import Toast from "../ui/Toast";
@@ -144,7 +144,7 @@ export default function CompanyJournalDetail() {
   };
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="company-journal-detail flex flex-col gap-6">
       <Link
         to="/company/journaux"
         className="inline-flex w-fit items-center gap-2 text-sm font-medium text-primary hover:underline"
@@ -187,11 +187,14 @@ export default function CompanyJournalDetail() {
         </div>
       ) : loadError ? null : intern ? (
         <>
-          <PageHeader
-            eyebrow="Journal de stage"
-            title={intern.studentName}
-            subtitle={`${intern.offerTitle} · ${intern.etab}`}
-          />
+          <header className="company-journal-detail-header">
+            <CompanyAvatar name={intern.studentName} />
+            <div className="min-w-0">
+              <p className="company-eyebrow">Journal de stage</p>
+              <span className="company-person-name">{intern.studentName}</span>
+              <p className="company-intern-meta">{intern.offerTitle} · {intern.etab}</p>
+            </div>
+          </header>
 
           {noEntryForTwoWeeks && (
             <div className="rounded border border-accent-ink/30 bg-accent-tint p-4 text-sm text-accent-ink" role="status">
@@ -200,39 +203,32 @@ export default function CompanyJournalDetail() {
           )}
 
           {expectedWeeks.length ? (
-            <ol className="grid gap-3">
+            <ol className="company-week-list">
               {expectedWeeks.map((week) => {
                 const entry = entryByWeek.get(week);
                 const status = weekStatus(week, entry, currentWeek);
                 return (
                   <li
                     key={week}
-                    className="rounded border border-line bg-surface p-4 sm:p-5"
+                    className="company-week-card"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="company-week-header">
                       <div>
-                        <h2 className="font-semibold text-ink">
-                          {formatWeekRange(week)}
-                        </h2>
+                        <h3 className="company-week-title">{formatWeekRange(week)}</h3>
                         {entry?.submittedAt && (
-                          <p className="mt-1 text-xs text-ink-soft">
-                            Soumise le {formatDate(entry.submittedAt)}
-                          </p>
+                          <p className="company-week-submitted">Soumise le {formatDate(entry.submittedAt)}</p>
                         )}
                       </div>
-                      <StatusBadge
-                        status={status.code}
-                        label={status.label}
-                      />
+                      <span className="company-nowrap"><StatusBadge status={status.code} label={status.label} /></span>
                     </div>
 
                     {entry ? (
-                      <div className="mt-4">
-                        <p className="whitespace-pre-line text-sm leading-6 text-ink-soft">
-                          {entry.content}
-                        </p>
+                      <div className="company-week-entry">
+                        <div className="company-entry-content">
+                          <p>{entry.content}</p>
+                        </div>
                         {entry.validated && (
-                          <blockquote className="mt-4 border-l-2 border-line bg-bg p-3 text-sm text-ink-soft">
+                          <blockquote className="company-entry-comment">
                             <p>
                               Validée le {formatDate(entry.validatedAt)}
                             </p>
@@ -248,7 +244,7 @@ export default function CompanyJournalDetail() {
                               setSelectedEntry(entry);
                               setComment("");
                             }}
-                            className="mt-4 inline-flex min-h-10 items-center gap-2 rounded bg-primary px-4 text-sm font-semibold text-on-primary hover:brightness-95"
+                            className="company-primary-button"
                           >
                             <Check className="size-4" aria-hidden="true" />
                             Valider

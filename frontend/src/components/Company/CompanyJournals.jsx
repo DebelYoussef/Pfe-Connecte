@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, Search } from "lucide-react";
+import { BookOpen, CheckCheck, Clock, PenLine, Search, Users } from "lucide-react";
+import { CompanyAvatar, CompanyMetricCard } from "./CompanyVisuals";
 import ErrorBanner from "../ErrorBanner";
 import EmptyState from "../ui/EmptyState";
 import PageHeader from "../ui/PageHeader";
@@ -9,14 +10,6 @@ import {
   COMPANY_DATA_CHANGED_EVENT,
   listMyInterns,
 } from "../../services.company";
-
-function initials(name = "") {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return (parts.length > 1
-    ? `${parts[0][0]}${parts[parts.length - 1][0]}`
-    : (parts[0] || "").slice(0, 2)
-  ).toLocaleUpperCase("fr");
-}
 
 function formatDate(value) {
   if (!value) return "Date non disponible";
@@ -27,17 +20,6 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   }).format(date);
-}
-
-function StatCard({ label, value }) {
-  return (
-    <article className="rounded border border-line bg-surface p-4">
-      <p className="text-sm text-ink-soft">{label}</p>
-      <strong className="mt-2 block font-serif text-2xl font-semibold text-ink">
-        {value}
-      </strong>
-    </article>
-  );
 }
 
 export default function CompanyJournals() {
@@ -93,7 +75,7 @@ export default function CompanyJournals() {
   }, [interns, query, tab]);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="company-journals-page flex flex-col gap-6">
       <PageHeader
         eyebrow="Espace entreprise"
         title="Journaux"
@@ -118,14 +100,14 @@ export default function CompanyJournals() {
         </div>
       ) : !error ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Stagiaires" value={stats.interns} />
-            <StatCard label="Entrées à valider" value={stats.toValidate} />
-            <StatCard label="Entrées validées" value={stats.validated} />
-            <StatCard label="En retard" value={stats.late} />
+          <div className="company-stat-grid">
+            <CompanyMetricCard icon={Users} label="Stagiaires" value={stats.interns} tone="teal" />
+            <CompanyMetricCard icon={PenLine} label="Entrées à valider" value={stats.toValidate} tone="gold" />
+            <CompanyMetricCard icon={CheckCheck} label="Entrées validées" value={stats.validated} tone="green" />
+            <CompanyMetricCard icon={Clock} label="En retard" value={stats.late} tone="slate" />
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="company-journals-content flex flex-col gap-4">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div
                 className="flex gap-2 overflow-x-auto border-b border-line"
@@ -170,62 +152,53 @@ export default function CompanyJournals() {
             </div>
 
             {visible.length ? (
-              <div className="grid gap-3">
+              <div className="company-intern-list">
                 {visible.map((intern) => {
                   const totalWeeks = intern.totalWeeks;
                   const progress = totalWeeks
                     ? Math.round((intern.validatedCount / totalWeeks) * 100)
                     : 0;
                   return (
-                    <article
-                      key={intern.studentId}
-                      className="grid gap-4 rounded border border-line bg-surface p-4 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-5"
-                    >
-                      <div
-                        className="grid size-11 place-items-center rounded-full bg-primary-tint text-sm font-semibold text-primary"
-                        aria-hidden="true"
-                      >
-                        {initials(intern.studentName)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-semibold text-ink">{intern.studentName}</h2>
-                          {intern.toValidateCount > 0 && (
-                            <span className="rounded bg-accent-tint px-2 py-1 text-xs font-medium text-accent-ink">
-                              {intern.toValidateCount} à valider
-                            </span>
-                          )}
+                    <article className="company-intern-row" key={intern.studentId}>
+                      <div className="company-intern-identity">
+                        <CompanyAvatar name={intern.studentName} />
+                        <div className="company-intern-copy">
+                          <div className="company-intern-name-line">
+                            <h3 className="company-person-name">{intern.studentName}</h3>
+                            {intern.toValidateCount > 0 && (
+                              <span className="company-count-pill">
+                                {intern.toValidateCount} à valider
+                              </span>
+                            )}
+                          </div>
+                          <p className="company-intern-offer">{intern.offerTitle}</p>
+                          <p className="company-intern-meta">
+                            Début du stage : {formatDate(intern.startDate)} · {intern.etab}
+                          </p>
                         </div>
-                        <p className="mt-1 text-sm text-ink-soft">{intern.offerTitle}</p>
-                        <p className="mt-1 text-xs text-ink-soft">
-                          Début du stage : {formatDate(intern.startDate)} · {intern.etab}
-                        </p>
-                        <div className="mt-3 flex items-center gap-3">
+                      </div>
+                      <div className="company-intern-actions">
+                        <div className="company-intern-progress">
                           <div
-                            className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-line"
+                            className="company-progress-track"
                             role="progressbar"
                             aria-label={`Semaines validées par ${intern.studentName}`}
                             aria-valuemin="0"
                             aria-valuemax={totalWeeks}
                             aria-valuenow={intern.validatedCount}
                           >
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${progress}%` }}
-                            />
+                            <span style={{ width: `${progress}%` }} />
                           </div>
-                          <span className="shrink-0 text-xs text-ink-soft">
-                            {intern.validatedCount} / {totalWeeks} semaines validées
-                          </span>
+                          <span>{intern.validatedCount} / {totalWeeks} semaines validées</span>
                         </div>
+                        <Link
+                          to={`/company/journaux/${encodeURIComponent(intern.studentId)}`}
+                          className="company-secondary-button"
+                        >
+                          <BookOpen className="size-4" aria-hidden="true" />
+                          Consulter
+                        </Link>
                       </div>
-                      <Link
-                        to={`/company/journaux/${encodeURIComponent(intern.studentId)}`}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-line px-4 text-sm font-semibold text-primary hover:bg-bg"
-                      >
-                        <BookOpen className="size-4" aria-hidden="true" />
-                        Consulter
-                      </Link>
                     </article>
                   );
                 })}

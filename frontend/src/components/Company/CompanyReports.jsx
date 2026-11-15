@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
-  ChevronUp,
+  CircleCheck,
   ExternalLink,
-  History,
-  MessageSquareText,
+  FileText,
+  Hourglass,
+  Info,
+  MessageSquare,
+  MessageSquareWarning,
   Search,
 } from "lucide-react";
+import { CompanyAvatar, CompanyMetricCard } from "./CompanyVisuals";
 import ErrorBanner from "../ErrorBanner";
 import ReportReviewDialog from "../reports/ReportReviewDialog";
 import ReportVersionCard from "../reports/ReportVersionCard";
@@ -62,17 +66,6 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   }).format(date);
-}
-
-function StatCard({ label, value }) {
-  return (
-    <article className="rounded border border-line bg-surface p-4">
-      <p className="text-sm text-ink-soft">{label}</p>
-      <strong className="mt-2 block font-serif text-2xl font-semibold text-ink">
-        {value}
-      </strong>
-    </article>
-  );
 }
 
 export default function CompanyReports() {
@@ -244,12 +237,16 @@ export default function CompanyReports() {
   const retryHistory = (studentId) => void loadHistory(studentId);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="company-reports-page flex flex-col gap-6">
       <PageHeader
         eyebrow="Espace entreprise"
         title="Rapports"
         subtitle="Relisez les rapports de vos stagiaires. Un rapport est validé lorsque vous et l'encadrant l'approuvez."
       />
+      <div className="company-info-note">
+        <Info size={16} aria-hidden="true" />
+        <span>Chaque nouveau dépôt remet les deux avis à zéro.</span>
+      </div>
 
       {error && (
         <ErrorBanner
@@ -276,15 +273,11 @@ export default function CompanyReports() {
         </div>
       ) : !error ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Total" value={items.length} />
-            <StatCard label="À examiner" value={pendingCount} />
-            <StatCard label="Validés" value={validatedCount} />
-            <StatCard label="Modifications demandées" value={changesCount} />
-          </div>
-
-          <div className="rounded border border-line bg-accent-tint px-4 py-3 text-sm text-accent-ink">
-            Chaque nouveau dépôt remet les deux avis à zéro.
+          <div className="company-stat-grid">
+            <CompanyMetricCard icon={FileText} label="Total" value={items.length} tone="teal" />
+            <CompanyMetricCard icon={Hourglass} label="À examiner" value={pendingCount} tone="gold" />
+            <CompanyMetricCard icon={CircleCheck} label="Validés" value={validatedCount} tone="green" />
+            <CompanyMetricCard icon={MessageSquareWarning} label="Modifications demandées" value={changesCount} tone="slate" />
           </div>
 
           <div className="flex flex-col gap-4">
@@ -346,18 +339,24 @@ export default function CompanyReports() {
             </div>
 
             {visible.length ? (
-              <div className="overflow-x-auto rounded border border-line bg-surface">
-                <table className="w-full min-w-[1120px] border-collapse text-left">
+              <div className="company-reports-table-wrap">
+                <table className="rp-table company-reports-table">
+                  <colgroup>
+                    <col className="company-report-col-student" />
+                    <col className="company-report-col-title" />
+                    <col className="company-report-col-date" />
+                    <col className="company-report-col-decisions" />
+                    <col className="company-report-col-status" />
+                    <col className="company-report-col-actions" />
+                  </colgroup>
                   <thead>
-                    <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
-                      <th className="px-3 py-3 font-medium">Stagiaire</th>
-                      <th className="px-3 py-3 font-medium">Titre du rapport</th>
-                      <th className="px-3 py-3 font-medium">Version</th>
-                      <th className="px-3 py-3 font-medium">Date</th>
-                      <th className="px-3 py-3 font-medium">Avis de l’encadrant</th>
-                      <th className="px-3 py-3 font-medium">Mon avis</th>
-                      <th className="px-3 py-3 font-medium">Statut</th>
-                      <th className="px-3 py-3 font-medium">Actions</th>
+                    <tr>
+                      <th scope="col">Stagiaire</th>
+                      <th scope="col">Rapport</th>
+                      <th scope="col">Date</th>
+                      <th scope="col">Avis</th>
+                      <th scope="col">Statut</th>
+                      <th scope="col" className="company-report-actions-heading">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -456,94 +455,65 @@ function FragmentRows({
   const statusLabel = reportStatusLabels[report.status] || report.status;
   return (
     <>
-      <tr className="border-b border-line align-top text-sm last:border-0">
-        <td className="px-3 py-4 font-medium text-ink">{report.studentName}</td>
-        <td className="max-w-64 px-3 py-4 text-ink">
-          <span className="block truncate" title={report.reportTitle}>
-            {report.reportTitle}
-          </span>
-          <span className="mt-1 block text-xs text-ink-soft">
-            {report.offerTitle}
-          </span>
+      <tr className="company-report-row">
+        <td>
+          <div className="company-report-student">
+            <CompanyAvatar name={report.studentName} />
+            <span className="company-report-student-name">{report.studentName}</span>
+          </div>
         </td>
-        <td className="px-3 py-4 text-ink">v{report.version}</td>
-        <td className="whitespace-nowrap px-3 py-4 text-ink-soft">
-          {formatDate(report.submittedAt)}
+        <td>
+          <span className="company-report-title" title={report.reportTitle}>{report.reportTitle}</span>
+          <span className="company-report-subtitle">v{report.version} · {report.offerTitle}</span>
         </td>
-        <td className="px-3 py-4">
-          <DecisionBadge decision={report.teacherDecision} />
+        <td><span className="company-nowrap">{formatDate(report.submittedAt)}</span></td>
+        <td>
+          <div className="company-decision-stack">
+            <div><span>Encadrant</span><span className="company-nowrap"><DecisionBadge decision={report.teacherDecision} /></span></div>
+            <div><span>Moi</span><span className="company-nowrap"><DecisionBadge decision={report.companyDecision} /></span></div>
+          </div>
         </td>
-        <td className="px-3 py-4">
-          <DecisionBadge decision={report.companyDecision} />
-        </td>
-        <td className="px-3 py-4">
-          <StatusBadge status={report.status} label={statusLabel} />
-        </td>
-        <td className="px-3 py-4">
-          <div className="flex min-w-56 flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onConsult}
-              className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-primary hover:bg-bg"
-            >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-              Consulter
-            </button>
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={onHistory}
-              className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-ink-soft hover:bg-bg"
-            >
-              <History className="size-3.5" aria-hidden="true" />
-              Historique
-              {expanded ? (
-                <ChevronUp className="size-3.5" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="size-3.5" aria-hidden="true" />
-              )}
-            </button>
+        <td><span className="company-nowrap"><StatusBadge status={report.status} label={statusLabel} /></span></td>
+        <td>
+          <div className="company-report-actions">
+            <Tooltip content="Consulter le PDF">
+              <button type="button" onClick={onConsult} className="company-icon-button" aria-label="Consulter le PDF">
+                <ExternalLink className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Historique des versions">
+              <button type="button" aria-label="Historique des versions" aria-expanded={expanded} onClick={onHistory} className="company-icon-button">
+                <ChevronDown className={`size-4 company-history-chevron${expanded ? ' is-expanded' : ''}`} aria-hidden="true" />
+              </button>
+            </Tooltip>
             {hasDecision ? (
               <>
                 <Tooltip content={disabledReason}>
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex min-h-9 cursor-not-allowed items-center gap-1 rounded border border-line bg-bg px-2.5 text-xs font-medium text-ink-soft"
-                  >
-                    <Check className="size-3.5" aria-hidden="true" />
-                    Approuver
-                  </button>
+                  <span className="company-disabled-action-target" tabIndex={0}>
+                    <button type="button" disabled className="company-action-button company-action-disabled">
+                      <Check className="size-3.5" aria-hidden="true" />Approuver
+                    </button>
+                  </span>
                 </Tooltip>
                 <Tooltip content={disabledReason}>
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex min-h-9 cursor-not-allowed items-center gap-1 rounded border border-line bg-bg px-2.5 text-xs font-medium text-ink-soft"
-                  >
-                    <MessageSquareText className="size-3.5" aria-hidden="true" />
-                    Demander des modifications
-                  </button>
+                  <span className="company-disabled-action-target" tabIndex={0}>
+                    <button type="button" disabled aria-label="Demander des modifications" className="company-action-button company-action-disabled company-action-icon-only">
+                      <MessageSquare className="size-4" aria-hidden="true" />
+                    </button>
+                  </span>
                 </Tooltip>
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => onReview("APPROVED")}
-                  className="inline-flex min-h-9 items-center gap-1 rounded bg-primary px-2.5 text-xs font-semibold text-on-primary hover:brightness-95"
-                >
-                  <Check className="size-3.5" aria-hidden="true" />
-                  Approuver
+                <button type="button" onClick={() => onReview('APPROVED')} className="company-action-button company-action-approve">
+                  <Check className="size-3.5" aria-hidden="true" />Approuver
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onReview("CHANGES_REQUESTED")}
-                  className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-ink hover:bg-bg"
-                >
-                  <MessageSquareText className="size-3.5" aria-hidden="true" />
-                  Demander des modifications
-                </button>
+                <Tooltip content="Demander des modifications">
+                  <button type="button" onClick={() => onReview('CHANGES_REQUESTED')} className="company-action-button company-action-danger" aria-label="Demander des modifications">
+                    <MessageSquare className="size-4" aria-hidden="true" />
+                    <span>Modifications</span>
+                  </button>
+                </Tooltip>
               </>
             )}
           </div>
@@ -551,7 +521,7 @@ function FragmentRows({
       </tr>
       {expanded && (
         <tr className="border-b border-line">
-          <td colSpan={8} className="bg-bg p-4">
+          <td colSpan={6} className="company-report-history-cell">
             {history?.loading && (
               <div className="grid gap-3" aria-label="Chargement de l’historique">
                 <Skeleton className="h-40 rounded" />
@@ -566,13 +536,14 @@ function FragmentRows({
             )}
             {history && !history.loading && !history.error && (
               history.items.length ? (
-                <div className="grid gap-3">
+                <div className="company-report-history">
                   {history.items.map((version) => (
-                    <ReportVersionCard
-                      key={version.version}
+                    <div className="company-history-card" key={version.version}>
+                      <ReportVersionCard
                       report={version}
                       showRule={false}
                     />
+                    </div>
                   ))}
                 </div>
               ) : (
