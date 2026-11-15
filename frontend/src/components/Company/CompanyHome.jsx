@@ -16,12 +16,12 @@ import {
 } from "lucide-react";
 import {
   getCompanyDashboard,
-  getCompanyProfile,
   getCompanyTasks,
   listCompanyApplications,
-  listCompanyNotifications,
   listMyOffers,
 } from "../../services";
+import { getUser } from "../../auth";
+import { listCompanyNotifications } from "../../services.company";
 
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -75,7 +75,6 @@ function useResource(loader) {
   return { ...state, retry };
 }
 
-const loadProfile = () => getCompanyProfile();
 const loadDashboard = () => getCompanyDashboard();
 const loadApplications = () => listCompanyApplications({ limit: 5 });
 const loadOffers = () => listMyOffers({ limit: 4 });
@@ -208,29 +207,22 @@ const STAT_TILES = [
   { key: "confirmedInterns", label: "Stagiaires confirmés", icon: UserCheck, className: "bg-primary-strong text-white" },
 ];
 
-function Hero({ profile, dashboard }) {
+function Hero({ displayName, dashboard }) {
   return (
     <section aria-labelledby="hero-title" className="rounded bg-hero p-6 sm:p-10">
       <div className="grid items-center gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <div>
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-accent-ink">
-            Bonjour
-            {profile.status === "success" && `, ${profile.data.name}`}
-            {profile.status === "loading" && (
-              <>
-                {", "}
-                <Skeleton className="inline-block h-3 w-28 align-middle" />
-              </>
-            )}
+            Bonjour, {displayName}
           </p>
           <h1 id="hero-title" className="text-balance font-serif text-4xl font-bold leading-[1.05] tracking-tight text-ink sm:text-5xl">
             Gérez vos offres de stage
           </h1>
           <div className="mt-8 flex flex-wrap gap-3">
-            <PrimaryLink to="/company/offers/new" icon={Plus}>
+            <PrimaryLink to="/company/offres/nouvelle" icon={Plus}>
               Publier une offre
             </PrimaryLink>
-            <SecondaryLink to="/company/applications">Voir les candidatures</SecondaryLink>
+            <SecondaryLink to="/company/candidatures">Voir les candidatures</SecondaryLink>
           </div>
         </div>
 
@@ -278,7 +270,7 @@ function RecentApplications({ resource }) {
         id="apps-title"
         eyebrow="À traiter"
         title="Candidatures récentes"
-        action={<TextLink to="/company/applications" label="Voir toutes les candidatures">Voir tout</TextLink>}
+        action={<TextLink to="/company/candidatures" label="Voir toutes les candidatures">Voir tout</TextLink>}
       />
 
       {status === "loading" && (
@@ -303,7 +295,7 @@ function RecentApplications({ resource }) {
           icon={Inbox}
           title="Aucune candidature pour le moment"
           text="Les candidatures des étudiants apparaîtront ici dès qu’une offre sera publiée."
-          action={<SmallLink to="/company/offers/new"><Plus className="size-4" aria-hidden="true" />Publier une offre</SmallLink>}
+          action={<SmallLink to="/company/offres/nouvelle"><Plus className="size-4" aria-hidden="true" />Publier une offre</SmallLink>}
         />
       )}
 
@@ -312,7 +304,7 @@ function RecentApplications({ resource }) {
           {data.items.map((app) => (
             <li key={app.id}>
               <Link
-                to={`/company/applications/${app.id}`}
+                to={`/company/candidatures/${app.id}`}
                 className={`group flex items-center gap-4 py-4 ${focusRing}`}
               >
                 <span className="grid size-10 shrink-0 place-items-center rounded border border-line bg-surface text-xs font-semibold text-primary">
@@ -346,7 +338,7 @@ function MyOffers({ resource }) {
       <SectionHeader
         id="offers-title"
         title="Mes offres"
-        action={<TextLink to="/company/offers" label="Voir toutes mes offres">Voir tout</TextLink>}
+        action={<TextLink to="/company/offres" label="Voir toutes mes offres">Voir tout</TextLink>}
       />
 
       {status === "loading" && (
@@ -369,7 +361,7 @@ function MyOffers({ resource }) {
           icon={Briefcase}
           title="Aucune offre publiée"
           text="Publiez votre première offre pour recevoir des candidatures d’étudiants."
-          action={<SmallLink to="/company/offers/new"><Plus className="size-4" aria-hidden="true" />Publier une offre</SmallLink>}
+          action={<SmallLink to="/company/offres/nouvelle"><Plus className="size-4" aria-hidden="true" />Publier une offre</SmallLink>}
         />
       )}
 
@@ -389,7 +381,7 @@ function MyOffers({ resource }) {
               {data.items.map((offer) => (
                 <tr key={offer.id}>
                   <th scope="row" className="px-5 py-4 font-semibold text-ink">
-                    <Link to={`/company/offers/${offer.id}`} className={`rounded hover:underline ${focusRing}`}>
+                    <Link to={`/company/offres/${offer.id}`} className={`rounded hover:underline ${focusRing}`}>
                       {offer.title}
                     </Link>
                   </th>
@@ -397,7 +389,7 @@ function MyOffers({ resource }) {
                   <td className="px-3 py-4 text-right tabular-nums text-ink">{offer.applicationsCount}</td>
                   <td className="px-5 py-4 text-right">
                     <Link
-                      to={`/company/offers/${offer.id}/edit`}
+                      to={`/company/offres/${offer.id}/modifier`}
                       aria-label={`Modifier l’offre ${offer.title}`}
                       className={`inline-grid size-8 place-items-center rounded text-ink-soft transition-colors hover:bg-primary-tint hover:text-primary ${focusRing}`}
                     >
@@ -422,7 +414,7 @@ function Tasks({ resource }) {
     <section aria-labelledby="tasks-title" className="flex flex-col gap-4">
       <div className="flex items-end justify-between">
         <h2 id="tasks-title" className="font-serif text-3xl font-semibold tracking-tight text-ink">À faire</h2>
-        <TextLink to="/company/convention" label="Voir toutes les tâches">Voir tout</TextLink>
+        <TextLink to="/company/conventions" label="Voir toutes les tâches">Voir tout</TextLink>
       </div>
 
       {status === "loading" && (
@@ -443,7 +435,7 @@ function Tasks({ resource }) {
           icon={ListChecks}
           title="Rien à traiter"
           text="Les conventions, journaux et rapports à valider apparaîtront ici."
-          action={<SmallLink to="/company/applications">Voir les candidatures</SmallLink>}
+          action={<SmallLink to="/company/candidatures">Voir les candidatures</SmallLink>}
         />
       )}
 
@@ -451,7 +443,14 @@ function Tasks({ resource }) {
         <ul className="divide-y divide-line border-b border-line">
           {data.map((task) => (
             <li key={task.id}>
-              <Link to={task.to} className={`group flex items-center gap-3 py-4 ${focusRing}`}>
+              <Link
+                to={{
+                  convention: "/company/conventions",
+                  journal: "/company/journaux",
+                  report: "/company/rapports",
+                }[task.type] || task.to}
+                className={`group flex items-center gap-3 py-4 ${focusRing}`}
+              >
                 <span className="shrink-0 rounded bg-primary-tint px-2 py-1 text-xs font-medium text-primary">
                   {TASK_TYPE[task.type]}
                 </span>
@@ -495,7 +494,7 @@ function RecentNotifications({ resource }) {
           icon={Bell}
           title="Aucune notification"
           text="Vous serez averti ici des nouvelles candidatures et signatures."
-          action={<SmallLink to="/company/offers">Gérer mes offres</SmallLink>}
+          action={<SmallLink to="/company/offres">Gérer mes offres</SmallLink>}
         />
       )}
 
@@ -527,12 +526,17 @@ function RecentNotifications({ resource }) {
 /* ---------- Page ---------- */
 
 export default function CompanyHome() {
-  const profile = useResource(loadProfile);
   const dashboard = useResource(loadDashboard);
   const applications = useResource(loadApplications);
   const offers = useResource(loadOffers);
   const tasks = useResource(loadTasks);
   const notifications = useResource(loadNotifications);
+  const user = getUser() || {};
+  const displayName =
+    (user.role === "ENT" && user.companyName?.trim()) ||
+    [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+    user.email ||
+    "Utilisateur";
 
   useEffect(() => {
     document.title = "Accueil entreprise · PFE Connect";
@@ -540,7 +544,7 @@ export default function CompanyHome() {
 
   return (
     <div className="flex flex-col gap-12">
-      <Hero profile={profile} dashboard={dashboard} />
+      <Hero displayName={displayName} dashboard={dashboard} />
 
       <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-0">
         <div className="flex flex-col gap-14 xl:pr-14">

@@ -7,8 +7,9 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./components/Signup";
 import StudentLayout from "./components/layout/StudentLayout";
 import TeacherLayout from "./components/layout/TeacherLayout";
+import EmptyState from "./components/ui/EmptyState";
+import PageHeader from "./components/ui/PageHeader";
 import { getUser, homeFor, isAuthenticated, logout } from "./auth";
-import Notifications from "./pages/student/Notifications";
 import Applications from "./pages/student/Applications";
 import Convention from "./pages/student/Convention";
 import Home from "./pages/student/Home";
@@ -24,6 +25,7 @@ import TeacherReports from "./pages/teacher/TeacherReports";
 import TeacherRequests from "./pages/teacher/TeacherRequests";
 import TeacherStudentDetail from "./pages/teacher/TeacherStudentDetail";
 import TeacherStudents from "./pages/teacher/TeacherStudents";
+import Notifications from "./pages/shared/Notifications";
 
 function PublicOnly({ children }) {
   if (isAuthenticated()) {
@@ -59,18 +61,15 @@ function RolePlaceholder({ title }) {
 
 function CompanyPlaceholder({ title }) {
   return (
-    <section className="rounded border border-line bg-surface p-8">
-      <p className="text-xs font-semibold uppercase tracking-[.18em] text-accent-ink">
-        Espace entreprise
-      </p>
-      <h1 className="mt-3 font-serif text-3xl font-semibold">
-        Bientôt disponible
-      </h1>
-      <p className="mt-2 text-sm text-ink-soft">
-        La section « {title} » sera disponible prochainement dans votre espace
-        entreprise.
-      </p>
-    </section>
+    <>
+      <PageHeader eyebrow="Espace entreprise" title={title} />
+      <EmptyState
+        title={title}
+        message="Cette section arrive bientôt."
+        actionLabel="Retour à l’accueil"
+        actionTo="/company"
+      />
+    </>
   );
 }
 
@@ -123,34 +122,46 @@ export default function App() {
         }
       >
         <Route index element={<CompanyHome />} />
+        <Route path="offres" element={<CompanyPlaceholder title="Mes offres" />} />
         <Route
-          path="offers/*"
-          element={<CompanyPlaceholder title="Mes offres" />}
+          path="offres/nouvelle"
+          element={<CompanyPlaceholder title="Nouvelle offre" />}
         />
         <Route
-          path="applications/*"
+          path="offres/:offerId"
+          element={<CompanyPlaceholder title="Détail de l’offre" />}
+        />
+        <Route
+          path="offres/:offerId/modifier"
+          element={<CompanyPlaceholder title="Modifier une offre" />}
+        />
+        <Route
+          path="candidatures"
           element={<CompanyPlaceholder title="Candidatures" />}
         />
         <Route
-          path="convention/*"
+          path="conventions"
           element={<CompanyPlaceholder title="Conventions" />}
         />
         <Route
-          path="journals/*"
+          path="conventions/:conventionId"
+          element={<CompanyPlaceholder title="Convention" />}
+        />
+        <Route
+          path="journaux"
           element={<CompanyPlaceholder title="Journaux" />}
         />
         <Route
-          path="reports/*"
+          path="journaux/:studentId"
+          element={<CompanyPlaceholder title="Journaux" />}
+        />
+        <Route
+          path="rapports"
           element={<CompanyPlaceholder title="Rapports" />}
         />
-        <Route
-          path="notifications"
-          element={<CompanyPlaceholder title="Notifications" />}
-        />
-        <Route
-          path="profile"
-          element={<CompanyPlaceholder title="Profil" />}
-        />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="profil" element={<CompanyPlaceholder title="Mon profil" />} />
+        <Route path="profile" element={<Navigate to="/company/profil" replace />} />
       </Route>
 
       <Route

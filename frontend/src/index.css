@@ -803,9 +803,10 @@ h2 {
   margin-left: auto;
   display: grid;
   place-items: center;
-  min-width: 19px;
-  height: 19px;
-  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
   background: var(--accent);
   color: #17272b;
   font-size: 10px;
@@ -814,7 +815,7 @@ h2 {
 .sidebar-user {
   margin-top: auto;
   border-top: 1px solid var(--border);
-  padding: 18px 8px 0;
+  padding: 14px 8px 0;
 }
 .sidebar-user-row {
   display: flex;
@@ -1330,8 +1331,7 @@ h2 {
   align-items: center;
   gap: 9px;
   min-width: 0;
-  width: auto;
-  flex: 1;
+  width: 100%;
   color: var(--text);
   text-decoration: none;
 }
@@ -1342,18 +1342,19 @@ h2 {
   min-width: 0;
 }
 .sidebar-user .logout-button {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  margin: 0;
-  padding: 0;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  margin: 10px 0 0;
+  padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--muted);
+  font-size: 12px;
   cursor: pointer;
 }
 .sidebar-user .logout-button:hover {
@@ -1481,6 +1482,39 @@ h2 {
   padding: 13px 15px;
   text-align: center;
   border-top: 1px solid var(--border);
+}
+.notification-popover-error {
+  margin: 0;
+  padding: 10px 15px;
+  border-top: 1px solid var(--border);
+  color: var(--danger);
+  font-size: 12px;
+}
+.notification-row-skeleton {
+  height: 92px;
+  margin: 0;
+}
+.error-banner-retry {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 9px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.error-banner-retry:hover {
+  background: var(--danger-tint);
+}
+.error-banner-retry:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 1px;
 }
 .notification-tabs {
   display: flex;

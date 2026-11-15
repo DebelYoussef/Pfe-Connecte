@@ -28,8 +28,8 @@ export function LoadingRows({ count = 3 }) {
   return <div aria-busy="true" className="space-y-3">{Array.from({ length: count }).map((_, index) => <div key={index} className="h-24 animate-pulse rounded border border-line bg-skeleton"/>)}</div>;
 }
 
-export function EmptyPanel({ title, description, icon: Icon }) {
-  return <div className="rounded border border-dashed border-line bg-surface px-6 py-14 text-center"><span className="mx-auto grid size-12 place-items-center rounded bg-primary-tint text-primary"><Icon className="size-5" aria-hidden="true"/></span><h2 className="mt-4 font-serif text-2xl font-semibold">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-soft">{description}</p></div>;
+export function EmptyPanel({ title, description, icon: Icon, action }) {
+  return <div className="rounded border border-dashed border-line bg-surface px-6 py-14 text-center"><span className="mx-auto grid size-12 place-items-center rounded bg-primary-tint text-primary"><Icon className="size-5" aria-hidden="true"/></span><h2 className="mt-4 font-serif text-2xl font-semibold">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-soft">{description}</p>{action && <div className="mt-5">{action}</div>}</div>;
 }
 
 export function MetricCard({ label, value, note }) {
