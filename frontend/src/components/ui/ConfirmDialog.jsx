@@ -9,6 +9,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmDisabled = false,
+  confirmTooltip,
   acknowledgementLabel,
   children,
 }) {
@@ -49,7 +50,7 @@ export default function ConfirmDialog({
         )}
         <div>
           <button className="modal-cancel" type="button" onClick={cancelDialog}>{cancelLabel}</button>
-          <button className="modal-confirm" type="button" disabled={confirmDisabled || (Boolean(acknowledgementLabel) && !acknowledged)} onClick={confirmDialog}>{confirmLabel}</button>
+          <button className="modal-confirm" type="button" title={confirmDisabled ? confirmTooltip : undefined} disabled={confirmDisabled || (Boolean(acknowledgementLabel) && !acknowledged)} onClick={confirmDialog}>{confirmLabel}</button>
         </div>
       </section>
     </div>

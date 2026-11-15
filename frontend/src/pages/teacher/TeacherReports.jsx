@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
-import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
+import ReportReviewDialog from "../../components/reports/ReportReviewDialog";
 import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Toast from "../../components/ui/Toast";
@@ -420,49 +420,18 @@ export default function TeacherReports() {
         )}
       </section>
 
-      <ConfirmDialog
+      <ReportReviewDialog
         open={Boolean(confirmation)}
-        title={
-          confirmation?.decision === "APPROVED"
-            ? "Approuver ce rapport ?"
-            : "Demander des modifications ?"
-        }
-        body={
-          confirmation?.decision === "APPROVED"
-            ? "Votre avis sera enregistré pour la dernière version du rapport."
-            : "Indiquez les modifications attendues. Un commentaire est obligatoire."
-        }
-        confirmLabel={
-          busy
-            ? "Enregistrement…"
-            : confirmation?.decision === "APPROVED"
-              ? "Approuver"
-              : "Envoyer la demande"
-        }
-        confirmDisabled={
-          busy ||
-          (confirmation?.decision === "CHANGES_REQUESTED" && !comment.trim())
-        }
+        decision={confirmation?.decision}
+        comment={comment}
+        onCommentChange={setComment}
+        busy={busy}
         onCancel={() => {
           setConfirmation(null);
           setComment("");
         }}
         onConfirm={() => void submitReview()}
-      >
-        {confirmation?.decision === "CHANGES_REQUESTED" && (
-          <label className="teacher-review-comment">
-            <span>Commentaire requis</span>
-            <textarea
-              value={comment}
-              maxLength={2000}
-              rows={5}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Décrivez les modifications attendues…"
-            />
-            <small>{comment.length} / 2000</small>
-          </label>
-        )}
-      </ConfirmDialog>
+      />
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </section>
   );

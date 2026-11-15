@@ -1,7 +1,7 @@
 import {
+  BriefcaseBusiness,
   Bell,
   BookOpen,
-  BriefcaseBusiness,
   Check,
   CheckCheck,
   FileText,
@@ -10,16 +10,21 @@ import {
 import { useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useNotifications } from "../../context/NotificationsContext";
+import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
+import Skeleton from "../../components/ui/Skeleton";
 import Toast from "../../components/ui/Toast";
+import Tooltip from "../../components/ui/Tooltip";
 
 const icons = {
+  APPLICATION: BriefcaseBusiness,
   APPLICATION_STATUS: BriefcaseBusiness,
   CONVENTION: FileText,
   SUPERVISION: UsersRound,
   JOURNAL: BookOpen,
   REPORT: FileText,
+  OFFER: BriefcaseBusiness,
   REMINDER: Bell,
 };
 
@@ -39,20 +44,41 @@ function createdLabel(createdAt) {
 }
 
 export default function Notifications() {
-  const { items, unreadCount, markRead, markAll } = useNotifications();
-  const { notificationRouteMap, homePath = "/student" } = useOutletContext();
+  const {
+    items,
+    unreadCount,
+    markRead,
+    markAll,
+    loading,
+    error,
+    refresh,
+  } = useNotifications();
+  const { notificationRouteMap, homePath = "/student" } =
+    useOutletContext() || {};
   const [filter, setFilter] = useState("all");
   const [toast, setToast] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const visible = filter === "unread" ? items.filter((item) => !item.read) : items;
 
   async function markAllRead() {
-    await markAll();
-    setToast("Toutes les notifications sont lues");
+    setBusy(true);
+    try {
+      await markAll();
+      setToast("Toutes les notifications sont lues.");
+    } catch {
+      setToast("Les notifications n’ont pas pu être mises à jour.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function openNotification(item) {
-    if (!item.read) void markRead(item.id);
+    if (!item.read) {
+      void markRead(item.id).catch(() =>
+        setToast("Cette notification n’a pas pu être marquée comme lue."),
+      );
+    }
     navigate(destinationFor(notificationRouteMap, item, homePath));
   }
 
@@ -62,16 +88,37 @@ export default function Notifications() {
         eyebrow="Boîte de réception"
         title="Notifications"
         action={
-          <button
-            className="outlined-action interactive"
-            disabled={!unreadCount}
-            onClick={markAllRead}
+          <Tooltip
+            content={
+              unreadCount
+                ? "Marquer toutes les notifications comme lues"
+                : "Aucune notification non lue"
+            }
           >
-            <CheckCheck size={14} />
-            Tout marquer comme lu
-          </button>
+            <button
+              type="button"
+              className="outlined-action interactive"
+              disabled={!unreadCount || busy}
+              title={
+                unreadCount
+                  ? "Marquer toutes les notifications comme lues"
+                  : "Aucune notification non lue"
+              }
+              onClick={markAllRead}
+            >
+              <CheckCheck size={14} />
+              Tout marquer comme lu
+            </button>
+          </Tooltip>
         }
       />
+      {error && (
+        <ErrorBanner
+          title="Impossible de charger les notifications"
+          message={error.message || "Réessayez dans un instant."}
+          onRetry={() => void refresh()}
+        />
+      )}
       <div className="notification-tabs">
         <button
           className={filter === "all" ? "active" : ""}
@@ -86,7 +133,13 @@ export default function Notifications() {
           Non lues ({unreadCount})
         </button>
       </div>
-      {visible.length ? (
+      {loading && !error ? (
+        <div className="notifications-page-list" aria-busy="true">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} className="notification-row-skeleton" />
+          ))}
+        </div>
+      ) : !error && visible.length ? (
         <div className="notifications-page-list">
           {visible.map((item) => {
             const Icon = icons[item.type] || Bell;
@@ -122,7 +175,11 @@ export default function Notifications() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void markRead(item.id);
+                      void markRead(item.id).catch(() =>
+                        setToast(
+                          "Cette notification n’a pas pu être marquée comme lue.",
+                        ),
+                      );
                     }}
                   >
                     <Check size={13} />
@@ -135,12 +192,14 @@ export default function Notifications() {
             );
           })}
         </div>
-      ) : (
+      ) : !error ? (
         <EmptyState
           title={filter === "unread" ? "Tout est lu" : "Aucune notification"}
           message="Votre boîte de réception est vide."
+          actionLabel="Retour à l’accueil"
+          actionTo={homePath}
         />
-      )}
+      ) : null}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </section>
   );

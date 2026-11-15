@@ -1,4 +1,4 @@
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, RotateCw, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function getErrorBanner(err, context) {
@@ -46,7 +46,7 @@ export function getErrorBanner(err, context) {
   };
 }
 
-export default function ErrorBanner({ title, message, onClose }) {
+export default function ErrorBanner({ title, message, onClose, onRetry }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -65,14 +65,22 @@ export default function ErrorBanner({ title, message, onClose }) {
         <strong className="error-banner-title">{title}</strong>
         <p className="error-banner-message">{message}</p>
       </div>
-      <button
-        type="button"
-        className="error-banner-close"
-        onClick={onClose}
-        aria-label="Fermer le message d’erreur"
-      >
-        <X size={16} aria-hidden="true" />
-      </button>
+      {onRetry && (
+        <button type="button" className="error-banner-retry" onClick={onRetry}>
+          <RotateCw size={15} aria-hidden="true" />
+          Réessayer
+        </button>
+      )}
+      {onClose && (
+        <button
+          type="button"
+          className="error-banner-close"
+          onClick={onClose}
+          aria-label="Fermer le message d’erreur"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

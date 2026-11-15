@@ -1,27 +1,39 @@
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import Login from "./components/Login";
-import Signup from "./components/Signup";
 import CompleteProfile from "./components/CompleteProfile";
+import CompanyHome from "./components/Company/CompanyHome";
+import CompanyApplications from "./components/Company/CompanyApplications";
+import CompanyConvention from "./components/Company/CompanyConvention";
+import CompanyConventions from "./components/Company/CompanyConventions";
+import CompanyJournalDetail from "./components/Company/CompanyJournalDetail";
+import CompanyJournals from "./components/Company/CompanyJournals";
+import CompanyLayout from "./components/Company/CompanyLayout";
+import CompanyOfferDetail from "./components/Company/CompanyOfferDetail";
+import CompanyOfferForm from "./components/Company/CompanyOfferForm";
+import CompanyOffers from "./components/Company/CompanyOffers";
+import CompanyProfile from "./components/Company/CompanyProfile";
+import CompanyReports from "./components/Company/CompanyReports";
+import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Signup from "./components/Signup";
 import StudentLayout from "./components/layout/StudentLayout";
-import Home from "./pages/student/Home";
-import Offers from "./pages/student/Offers";
-import OfferDetail from "./pages/student/OfferDetail";
+import TeacherLayout from "./components/layout/TeacherLayout";
+import { getUser, homeFor, isAuthenticated, logout } from "./auth";
 import Applications from "./pages/student/Applications";
 import Convention from "./pages/student/Convention";
-import Supervisor from "./pages/student/Supervisor";
+import Home from "./pages/student/Home";
 import Journal from "./pages/student/Journal";
-import Report from "./pages/student/Report";
-import Notifications from "./pages/student/Notifications";
+import OfferDetail from "./pages/student/OfferDetail";
+import Offers from "./pages/student/Offers";
 import Profile from "./pages/student/Profile";
-import TeacherLayout from "./components/layout/TeacherLayout";
+import Report from "./pages/student/Report";
+import Supervisor from "./pages/student/Supervisor";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
-import TeacherStudents from "./pages/teacher/TeacherStudents";
-import TeacherRequests from "./pages/teacher/TeacherRequests";
-import TeacherReports from "./pages/teacher/TeacherReports";
-import TeacherStudentDetail from "./pages/teacher/TeacherStudentDetail";
 import TeacherProfile from "./pages/teacher/TeacherProfile";
-import { getUser, homeFor, isAuthenticated, logout } from "./auth";
+import TeacherReports from "./pages/teacher/TeacherReports";
+import TeacherRequests from "./pages/teacher/TeacherRequests";
+import TeacherStudentDetail from "./pages/teacher/TeacherStudentDetail";
+import TeacherStudents from "./pages/teacher/TeacherStudents";
+import Notifications from "./pages/shared/Notifications";
 
 function PublicOnly({ children }) {
   if (isAuthenticated()) {
@@ -30,6 +42,7 @@ function PublicOnly({ children }) {
   }
   return children;
 }
+
 function RolePlaceholder({ title }) {
   const navigate = useNavigate();
   const user = getUser();
@@ -38,7 +51,7 @@ function RolePlaceholder({ title }) {
     user?.companyName ||
     user?.email;
   return (
-    <main style={{ padding: "2rem" }}>
+    <main className="p-8">
       <h1>{title}</h1>
       <p>{name}</p>
       <button
@@ -53,6 +66,7 @@ function RolePlaceholder({ title }) {
     </main>
   );
 }
+
 export default function App() {
   return (
     <Routes>
@@ -73,6 +87,7 @@ export default function App() {
         }
       />
       <Route path="/signup/complete-profile" element={<CompleteProfile />} />
+
       <Route
         element={
           <ProtectedRoute roles={["ETU"]}>
@@ -91,14 +106,52 @@ export default function App() {
         <Route path="/student/notifications" element={<Notifications />} />
         <Route path="/student/profil" element={<Profile />} />
       </Route>
+
       <Route
         path="/company"
         element={
           <ProtectedRoute roles={["ENT"]}>
-            <RolePlaceholder title="Espace entreprise" />
+            <CompanyLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<CompanyHome />} />
+        <Route path="offres" element={<CompanyOffers />} />
+        <Route
+          path="offres/nouvelle"
+          element={<CompanyOfferForm />}
+        />
+        <Route
+          path="offres/:offerId"
+          element={<CompanyOfferDetail />}
+        />
+        <Route
+          path="offres/:offerId/modifier"
+          element={<CompanyOfferForm />}
+        />
+        <Route
+          path="candidatures"
+          element={<CompanyApplications />}
+        />
+        <Route
+          path="conventions"
+          element={<CompanyConventions />}
+        />
+        <Route
+          path="conventions/:conventionId"
+          element={<CompanyConvention />}
+        />
+        <Route path="journaux" element={<CompanyJournals />} />
+        <Route
+          path="journaux/:studentId"
+          element={<CompanyJournalDetail />}
+        />
+        <Route path="rapports" element={<CompanyReports />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="profil" element={<CompanyProfile />} />
+        <Route path="profile" element={<Navigate to="/company/profil" replace />} />
+      </Route>
+
       <Route
         path="/teacher"
         element={
@@ -118,6 +171,7 @@ export default function App() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="profil" element={<TeacherProfile />} />
       </Route>
+
       <Route
         path="/responsable"
         element={
@@ -134,6 +188,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/" element={<Navigate to="/company" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

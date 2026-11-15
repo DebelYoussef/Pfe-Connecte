@@ -18,12 +18,27 @@ const studentService = {
 
 export function NotificationsProvider({ children, service = studentService }) {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const load = useCallback(
-    () => service.listNotifications().then((data) => setItems(data.items)),
+    async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await service.listNotifications();
+        setItems(data.items);
+        return data;
+      } catch (loadError) {
+        setError(loadError);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
     [service],
   );
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
   const unread = items.filter((item) => !item.read).length;
   const markRead = useCallback(async (id) => {
@@ -45,11 +60,13 @@ export function NotificationsProvider({ children, service = studentService }) {
       items,
       unread,
       unreadCount: unread,
+      loading,
+      error,
       markRead,
       markAll,
       refresh: load,
     }),
-    [items, unread, markRead, markAll, load],
+    [items, unread, loading, error, markRead, markAll, load],
   );
   return (
     <Context.Provider value={value}>{children}</Context.Provider>
