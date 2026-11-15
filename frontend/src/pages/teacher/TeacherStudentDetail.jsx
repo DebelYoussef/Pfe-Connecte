@@ -2,15 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
-  Download,
-  FileText,
   MessageSquareText,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EmptyState from "../../components/ui/EmptyState";
+import ReportReviewDialog from "../../components/reports/ReportReviewDialog";
+import ReportVersionCard from "../../components/reports/ReportVersionCard";
 import Skeleton from "../../components/ui/Skeleton";
-import StatusBadge from "../../components/ui/StatusBadge";
 import Toast from "../../components/ui/Toast";
 import Tooltip from "../../components/ui/Tooltip";
 import {
@@ -39,32 +37,6 @@ function journalStatus(entry) {
   const due = weekEnd(entry.week);
   due.setDate(due.getDate() + 7);
   return new Date(entry.submittedAt) > due ? "En retard" : "Soumise";
-}
-
-function decisionLabel(decision) {
-  if (decision === "APPROVED") return "Approuvé";
-  if (decision === "CHANGES_REQUESTED") return "Modifications demandées";
-  return "En attente";
-}
-
-function DecisionRow({ label, decision, comment }) {
-  return (
-    <div className="teacher-detail-reviewer">
-      <div>
-        <strong>{label}</strong>
-        <span
-          className={
-            decision
-              ? "teacher-detail-decision"
-              : "teacher-detail-decision pending"
-          }
-        >
-          {decisionLabel(decision)}
-        </span>
-      </div>
-      {comment && <p>{comment}</p>}
-    </div>
-  );
 }
 
 function ReviewActions({ report, latest, onApprove, onRequestChanges }) {
@@ -374,50 +346,11 @@ export default function TeacherStudentDetail() {
                   {data.reports.map((report) => {
                     const isLatest = report.version === latestReport?.version;
                     return (
-                      <article
-                        className="teacher-detail-card teacher-report-card"
+                      <ReportVersionCard
                         key={report.version}
-                      >
-                        <header>
-                          <div>
-                            <div className="teacher-report-title">
-                              <FileText size={18} />
-                              <h2>Version {report.version}</h2>
-                            </div>
-                            <p>Déposée le {formatDate(report.submittedAt)}</p>
-                          </div>
-                          <StatusBadge status={report.status} />
-                        </header>
-                        <p className="teacher-report-hash">
-                          SHA-256 <code>{report.sha256.slice(0, 16)}</code>
-                        </p>
-                        <div className="teacher-report-decisions">
-                          <DecisionRow
-                            label="Entreprise"
-                            decision={report.companyDecision}
-                            comment={report.companyComment}
-                          />
-                          <DecisionRow
-                            label="Encadrant"
-                            decision={report.teacherDecision}
-                            comment={report.teacherComment}
-                          />
-                        </div>
-                        <div className="teacher-report-rule">
-                          Le rapport est validé uniquement si l’entreprise et
-                          l’encadrant l’approuvent. Chaque nouveau dépôt remet
-                          les deux avis à zéro.
-                        </div>
-                        <footer className="teacher-report-footer">
-                          <a
-                            href={data.reportPdfUrls[report.version]}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="teacher-report-download"
-                          >
-                            <Download size={15} />
-                            Télécharger
-                          </a>
+                        report={report}
+                        downloadUrl={data.reportPdfUrls[report.version]}
+                        actions={
                           <ReviewActions
                             report={report}
                             latest={isLatest}
@@ -427,8 +360,8 @@ export default function TeacherStudentDetail() {
                               setDialog("changes");
                             }}
                           />
-                        </footer>
-                      </article>
+                        }
+                      />
                     );
                   })}
                 </div>
@@ -443,22 +376,12 @@ export default function TeacherStudentDetail() {
         </>
       )}
 
-      <ConfirmDialog
+      <ReportReviewDialog
         open={Boolean(dialog)}
-        title={
-          dialog === "approve"
-            ? "Approuver ce rapport ?"
-            : "Demander des modifications ?"
-        }
-        body={
-          dialog === "approve"
-            ? "Votre avis sera enregistré pour la dernière version du rapport."
-            : "Indiquez les modifications attendues. Un commentaire est obligatoire."
-        }
-        confirmLabel={dialog === "approve" ? "Approuver" : "Envoyer la demande"}
-        confirmDisabled={
-          saving || (dialog === "changes" && !comment.trim())
-        }
+        decision={dialog === "approve" ? "APPROVED" : "CHANGES_REQUESTED"}
+        comment={comment}
+        onCommentChange={setComment}
+        busy={saving}
         onCancel={() => {
           setDialog(null);
           setComment("");
@@ -468,21 +391,7 @@ export default function TeacherStudentDetail() {
             dialog === "approve" ? "APPROVED" : "CHANGES_REQUESTED",
           )
         }
-      >
-        {dialog === "changes" && (
-          <label className="teacher-review-comment">
-            <span>Commentaire requis</span>
-            <textarea
-              value={comment}
-              maxLength={2000}
-              rows={5}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Décrivez les modifications attendues…"
-            />
-            <small>{comment.length} / 2000</small>
-          </label>
-        )}
-      </ConfirmDialog>
+      />
       {toast && (
         <Toast message={toast} onClose={() => setToast("")} />
       )}

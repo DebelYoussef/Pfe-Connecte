@@ -1,56 +1,589 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight, BarChart3, CalendarDays, Check, FileText, MessageSquareText } from "lucide-react";
-import { getCompanyReport, listCompanyReports, reviewCompanyReport } from "../../services";
-import { EmptyPanel, formatDate, LoadError, LoadingRows, MetricCard, PageHeading, PersonAvatar, StatusTag, focusRing } from "./WorkflowUI";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  History,
+  MessageSquareText,
+  Search,
+} from "lucide-react";
+import ErrorBanner from "../ErrorBanner";
+import ReportReviewDialog from "../reports/ReportReviewDialog";
+import ReportVersionCard from "../reports/ReportVersionCard";
+import EmptyState from "../ui/EmptyState";
+import PageHeader from "../ui/PageHeader";
+import Skeleton from "../ui/Skeleton";
+import StatusBadge from "../ui/StatusBadge";
+import Toast from "../ui/Toast";
+import Tooltip from "../ui/Tooltip";
+import {
+  COMPANY_DATA_CHANGED_EVENT,
+  getReportPdfUrl,
+  listCompanyReportHistory,
+  listReportsForReview,
+  reviewReport,
+} from "../../services.company";
 
-const filters = [{ id: "ALL", label: "Tous" }, { id: "TO_REVIEW", label: "À examiner" }, { id: "APPROVED", label: "Validés" }, { id: "REVISION", label: "À corriger" }];
-const typeLabel = { INTERMEDIATE: "Rapport intermédiaire", WEEKLY: "Rapport de suivi", FINAL: "Rapport final" };
+const reportStatusLabels = {
+  UNDER_REVIEW: "En relecture",
+  CHANGES_REQUESTED: "Modifications demandées",
+  VALIDATED: "Validé",
+};
+
+const statusOptions = [
+  { value: "ALL", label: "Tous les statuts" },
+  { value: "UNDER_REVIEW", label: "En relecture" },
+  { value: "CHANGES_REQUESTED", label: "Modifications demandées" },
+  { value: "VALIDATED", label: "Validé" },
+];
+
+function decisionLabel(decision) {
+  if (decision === "APPROVED") return "Approuvé";
+  if (decision === "CHANGES_REQUESTED") return "Modifications demandées";
+  return "En attente";
+}
+
+function DecisionBadge({ decision }) {
+  return (
+    <StatusBadge
+      status={decision || "PENDING"}
+      label={decisionLabel(decision)}
+    />
+  );
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function StatCard({ label, value }) {
+  return (
+    <article className="rounded border border-line bg-surface p-4">
+      <p className="text-sm text-ink-soft">{label}</p>
+      <strong className="mt-2 block font-serif text-2xl font-semibold text-ink">
+        {value}
+      </strong>
+    </article>
+  );
+}
 
 export default function CompanyReports() {
-  const { id: legacyId, reportId } = useParams();
-  const id = reportId ?? legacyId;
   const [items, setItems] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [filter, setFilter] = useState("ALL");
-  const [state, setState] = useState("loading");
+  const [historyByStudent, setHistoryByStudent] = useState({});
+  const [expandedStudentId, setExpandedStudentId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [tab, setTab] = useState("review");
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
-  const [refresh, setRefresh] = useState(0);
-  const [feedback, setFeedback] = useState("");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
 
-  const load = useCallback(() => {
-    setState("loading");
-    const request = id ? getCompanyReport(id).then((item) => { setSelected(item); setFeedback(item?.feedback ?? ""); }) : listCompanyReports({ limit: 50 }).then((result) => setItems(result.items));
-    request.then(() => setState("success")).catch(() => setState("error"));
-  }, [id, refresh]);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { document.title = id ? "Rapport de stage · PFE Connect" : "Rapports de stage · PFE Connect"; }, [id]);
-
-  const visible = useMemo(() => items.filter((item) => filter === "ALL" || item.status === filter), [items, filter]);
-  const pending = items.filter((item) => item.status === "TO_REVIEW").length;
-  const approved = items.filter((item) => item.status === "APPROVED").length;
-
-  async function update(status) {
-    if (!selected) return;
-    if (status === "REVISION" && !feedback.trim()) { setError("Ajoutez un commentaire pour demander une correction."); return; }
-    setBusy(true); setError(""); setNotice("");
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const updated = await reviewCompanyReport(selected.id, status, feedback.trim());
-      setSelected(updated); setNotice(status === "APPROVED" ? "Le rapport a été validé." : "Votre demande de correction a été envoyée.");
-    } catch { setError("La mise à jour n’a pas pu être enregistrée."); }
-    finally { setBusy(false); }
+      const { items: reports } = await listReportsForReview({ limit: 100 });
+      setItems(reports);
+    } catch (loadError) {
+      setError(loadError);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const loadHistory = useCallback(async (studentId) => {
+    setHistoryByStudent((current) => ({
+      ...current,
+      [studentId]: {
+        items: current[studentId]?.items || [],
+        loading: true,
+        error: null,
+      },
+    }));
+    try {
+      const { items: reports } = await listCompanyReportHistory(studentId, {
+        limit: 100,
+      });
+      setHistoryByStudent((current) => ({
+        ...current,
+        [studentId]: { items: reports, loading: false, error: null },
+      }));
+    } catch (historyError) {
+      setHistoryByStudent((current) => ({
+        ...current,
+        [studentId]: {
+          items: current[studentId]?.items || [],
+          loading: false,
+          error: historyError,
+        },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => {
+      void load();
+      if (expandedStudentId) void loadHistory(expandedStudentId);
+    };
+    window.addEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+  }, [expandedStudentId, load, loadHistory]);
+
+  const pendingCount = items.filter((item) => !item.companyDecision).length;
+  const validatedCount = items.filter((item) => item.status === "VALIDATED").length;
+  const changesCount = items.filter(
+    (item) => item.status === "CHANGES_REQUESTED",
+  ).length;
+
+  const visible = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase("fr");
+    return items.filter((item) => {
+      const text =
+        `${item.studentName} ${item.reportTitle} ${item.offerTitle}`.toLocaleLowerCase(
+          "fr",
+        );
+      return (
+        text.includes(term) &&
+        (tab === "all" || !item.companyDecision) &&
+        (statusFilter === "ALL" || item.status === statusFilter)
+      );
+    });
+  }, [items, query, statusFilter, tab]);
+
+  function toggleHistory(studentId) {
+    if (expandedStudentId === studentId) {
+      setExpandedStudentId(null);
+      return;
+    }
+    setExpandedStudentId(studentId);
+    if (!historyByStudent[studentId]) void loadHistory(studentId);
   }
 
-  if (id) return <div className="mx-auto max-w-4xl"><Link to="/company/rapports" className={`mb-7 inline-flex items-center gap-2 text-sm font-medium text-ink-soft hover:text-primary ${focusRing}`}><ArrowLeft className="size-4"/>Tous les rapports</Link>{state === "loading" ? <LoadingRows count={2}/> : state === "error" ? <LoadError onRetry={() => setRefresh((n) => n + 1)}/> : !selected ? <EmptyPanel title="Rapport introuvable" description="Ce rapport n’est peut-être plus disponible." icon={FileText}/> : <>
-    <section className="rounded bg-hero p-6 sm:p-10"><div className="flex flex-wrap items-start justify-between gap-5"><div className="flex items-center gap-4"><PersonAvatar name={selected.studentName}/><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-accent-ink">{typeLabel[selected.type] ?? "Rapport de stage"}</p><h1 className="mt-2 font-serif text-3xl font-semibold sm:text-4xl">{selected.title}</h1></div></div><StatusTag status={selected.status}/></div><p className="mt-5 text-ink-soft">{selected.studentName} <span aria-hidden="true">·</span> {selected.offerTitle}</p><p className="mt-2 inline-flex items-center gap-2 text-sm text-ink-soft"><CalendarDays className="size-4"/>Soumis le {formatDate(selected.submittedAt)}</p></section>
-    <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]"><section className="rounded border border-line bg-surface p-6 sm:p-8"><h2 className="font-serif text-2xl font-semibold">Résumé du rapport</h2><p className="mt-5 whitespace-pre-line text-[15px] leading-7 text-ink-soft">{selected.summary}</p><div className="mt-8 rounded bg-bg p-5"><div className="flex items-center justify-between gap-3"><h3 className="font-semibold">Progression du stage</h3><span className="font-serif text-xl font-semibold text-primary">{selected.progress}%</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-primary" style={{ width: `${selected.progress}%`}}/></div><p className="mt-2 text-xs text-ink-soft">Avancement communiqué par le stagiaire</p></div></section>
-    <aside className="h-fit rounded border border-line bg-surface p-6"><h2 className="font-serif text-xl font-semibold">Évaluation</h2><p className="mt-2 text-sm leading-6 text-ink-soft">Partagez vos commentaires sur le travail et la progression présentés.</p><label className="mt-4 grid gap-2 text-sm font-medium" htmlFor="report-feedback">Commentaire<textarea id="report-feedback" value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={4} placeholder="Votre retour sur le rapport…" className={`resize-y rounded border border-line bg-bg px-3 py-2.5 text-sm font-normal leading-6 placeholder:text-ink-soft ${focusRing}`}/></label>{selected.feedback && <p className="mt-3 rounded bg-bg p-3 text-sm text-ink-soft">Dernier retour : {selected.feedback}</p>}{error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}{notice && <p role="status" className="mt-3 text-sm text-primary">{notice}</p>}{selected.status === "TO_REVIEW" || selected.status === "REVISION" ? <div className="mt-4 flex flex-col gap-2"><button disabled={busy} onClick={() => update("APPROVED")} className={`inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-3 text-sm font-semibold text-on-primary disabled:opacity-50 ${focusRing}`}>{busy ? "Enregistrement…" : <><Check className="size-4"/>Valider le rapport</>}</button><button disabled={busy} onClick={() => update("REVISION")} className={`inline-flex items-center justify-center gap-2 rounded border border-line px-4 py-3 text-sm font-semibold hover:bg-bg disabled:opacity-50 ${focusRing}`}><MessageSquareText className="size-4"/>Demander une correction</button></div> : <p className="mt-4 text-sm text-ink-soft">Ce rapport a déjà été traité.</p>}</aside></div>
-    </>}</div>;
+  async function consultReport(report) {
+    setActionError("");
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    try {
+      const { url } = await getReportPdfUrl(report.studentId, report.version);
+      if (popup) popup.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch (openError) {
+      popup?.close();
+      setActionError(
+        openError?.message || "Le rapport n’a pas pu être ouvert.",
+      );
+    }
+  }
 
-  return <div className="flex flex-col gap-8"><PageHeading title="Rapports de stage" description="Consultez les rapports remis par les stagiaires et donnez votre avis sur leur avancement." action={pending > 0 && <span className="inline-flex items-center gap-2 rounded bg-accent-tint px-4 py-3 text-sm font-semibold text-accent-ink"><FileText className="size-4"/>{pending} à examiner</span>}/>
-    {state === "loading" ? <LoadingRows count={3}/> : state === "error" ? <LoadError onRetry={() => setRefresh((n) => n + 1)}/> : <><div className="grid gap-3 sm:grid-cols-3"><MetricCard label="Rapports reçus" value={items.length}/><MetricCard label="À examiner" value={pending} note="En attente de votre avis"/><MetricCard label="Validés" value={approved}/></div><div role="tablist" aria-label="Filtrer les rapports" className="flex gap-2 overflow-x-auto border-b border-line pb-3">{filters.map((item) => <button key={item.id} role="tab" aria-selected={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded px-4 py-2 text-sm font-medium ${focusRing} ${filter === item.id ? "bg-primary text-on-primary" : "border border-line bg-surface text-ink-soft hover:text-ink"}`}>{item.label}{item.id === "ALL" ? ` · ${items.length}` : item.id === "TO_REVIEW" ? ` · ${pending}` : ""}</button>)}</div>
-    {visible.length ? <div className="grid gap-4 xl:grid-cols-2">{visible.map((item) => <article key={item.id} className="rounded border border-line bg-surface p-5 sm:p-6"><div className="flex items-start gap-4"><PersonAvatar name={item.studentName}/><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-accent-ink">{typeLabel[item.type] ?? "Rapport"}</span><StatusTag status={item.status}/></div><h2 className="mt-2 font-serif text-xl font-semibold leading-snug">{item.title}</h2><p className="mt-1 text-sm text-ink-soft">{item.studentName} <span aria-hidden="true">·</span> {item.offerTitle}</p><p className="mt-4 line-clamp-2 text-sm leading-6 text-ink-soft">{item.summary}</p><div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4"><span className="text-xs text-ink-soft">Reçu le {formatDate(item.submittedAt, { day: "numeric", month: "short" })}</span><Link to={`/company/rapports/${item.id}`} className={`inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline ${focusRing}`}>{item.status === "TO_REVIEW" ? "Examiner" : "Consulter"}<ArrowUpRight className="size-4"/></Link></div></div></div></article>)}</div> : <EmptyPanel title="Aucun rapport dans cette catégorie" description="Les rapports remis par vos stagiaires apparaîtront ici." icon={BarChart3} action={<Link to="/company/conventions" className={`inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary ${focusRing}`}>Voir les conventions</Link>}/>}</>}
-  </div>;
+  async function submitReview() {
+    if (!reviewTarget) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      const updated = await reviewReport(
+        reviewTarget.studentId,
+        reviewTarget.version,
+        {
+          decision: reviewTarget.decision,
+          comment:
+            reviewTarget.decision === "CHANGES_REQUESTED" ? comment : "",
+        },
+      );
+      setItems((current) =>
+        current.map((item) =>
+          item.studentId === updated.studentId ? updated : item,
+        ),
+      );
+      if (expandedStudentId !== updated.studentId) {
+        setHistoryByStudent((current) => ({
+          ...current,
+          [updated.studentId]: undefined,
+        }));
+      }
+      setReviewTarget(null);
+      setComment("");
+      setToast(
+        reviewTarget.decision === "APPROVED"
+          ? "Votre avis a été enregistré."
+          : "La demande de modifications a été envoyée.",
+      );
+    } catch (reviewError) {
+      setReviewTarget(null);
+      setComment("");
+      if (reviewError?.status === 409) {
+        await load();
+        setActionError(
+          "Cette version a déjà été traitée. La liste a été actualisée.",
+        );
+      } else {
+        setActionError(
+          reviewError?.message || "La décision n’a pas pu être enregistrée.",
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const retryHistory = (studentId) => void loadHistory(studentId);
+
+  return (
+    <section className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Espace entreprise"
+        title="Rapports"
+        subtitle="Relisez les rapports de vos stagiaires. Un rapport est validé lorsque vous et l'encadrant l'approuvez."
+      />
+
+      {error && (
+        <ErrorBanner
+          title="Impossible de charger les rapports"
+          message={error.message || "Une erreur est survenue. Réessayez."}
+          onRetry={() => void load()}
+        />
+      )}
+      {actionError && (
+        <ErrorBanner
+          title="Action impossible"
+          message={actionError}
+          onRetry={() => void load()}
+          onClose={() => setActionError("")}
+        />
+      )}
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chargement">
+          {[0, 1, 2, 3].map((item) => (
+            <Skeleton key={item} className="h-20 rounded" />
+          ))}
+          <Skeleton className="h-56 rounded sm:col-span-2 xl:col-span-4" />
+        </div>
+      ) : !error ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Total" value={items.length} />
+            <StatCard label="À examiner" value={pendingCount} />
+            <StatCard label="Validés" value={validatedCount} />
+            <StatCard label="Modifications demandées" value={changesCount} />
+          </div>
+
+          <div className="rounded border border-line bg-accent-tint px-4 py-3 text-sm text-accent-ink">
+            Chaque nouveau dépôt remet les deux avis à zéro.
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-center">
+              <div
+                className="flex gap-2 overflow-x-auto border-b border-line"
+                role="tablist"
+                aria-label="Filtrer les rapports"
+              >
+                {[
+                  { id: "review", label: "À examiner", count: pendingCount },
+                  { id: "all", label: "Tous", count: items.length },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === item.id}
+                    onClick={() => setTab(item.id)}
+                    className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium ${
+                      tab === item.id
+                        ? "border-primary text-primary"
+                        : "border-transparent text-ink-soft hover:text-ink"
+                    }`}
+                  >
+                    {item.label} · {item.count}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <label className="flex min-h-10 items-center gap-2 rounded border border-line bg-surface px-3 text-ink-soft sm:min-w-72">
+                  <Search className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only">
+                    Rechercher un stagiaire, un rapport ou une offre
+                  </span>
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Rechercher"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-soft"
+                  />
+                </label>
+                <label className="flex min-h-10 items-center gap-2 rounded border border-line bg-surface px-3 text-sm text-ink-soft">
+                  <span>Statut</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                    className="min-w-0 bg-transparent text-ink outline-none"
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {visible.length ? (
+              <div className="overflow-x-auto rounded border border-line bg-surface">
+                <table className="w-full min-w-[1120px] border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
+                      <th className="px-3 py-3 font-medium">Stagiaire</th>
+                      <th className="px-3 py-3 font-medium">Titre du rapport</th>
+                      <th className="px-3 py-3 font-medium">Version</th>
+                      <th className="px-3 py-3 font-medium">Date</th>
+                      <th className="px-3 py-3 font-medium">Avis de l’encadrant</th>
+                      <th className="px-3 py-3 font-medium">Mon avis</th>
+                      <th className="px-3 py-3 font-medium">Statut</th>
+                      <th className="px-3 py-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((report) => {
+                      const hasDecision = Boolean(report.companyDecision);
+                      const waitForStudent =
+                        hasDecision && report.status === "CHANGES_REQUESTED";
+                      const disabledReason = waitForStudent
+                        ? "En attente de la nouvelle version de l'étudiant"
+                        : "Vous avez déjà donné votre avis";
+                      const history = historyByStudent[report.studentId];
+                      const expanded = expandedStudentId === report.studentId;
+                      return (
+                        <FragmentRows
+                          key={report.studentId}
+                          report={report}
+                          expanded={expanded}
+                          history={history}
+                          disabledReason={disabledReason}
+                          hasDecision={hasDecision}
+                          onConsult={() => void consultReport(report)}
+                          onHistory={() => toggleHistory(report.studentId)}
+                          onRetryHistory={() => retryHistory(report.studentId)}
+                          onReview={(decision) => {
+                            setComment("");
+                            setReviewTarget({
+                              studentId: report.studentId,
+                              version: report.version,
+                              decision,
+                            });
+                          }}
+                        />
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : items.length ? (
+              <div className="rounded border border-line bg-surface p-6 text-center">
+                <EmptyState
+                  title="Aucun rapport trouvé"
+                  message="Modifiez votre recherche, le filtre de statut ou l’onglet sélectionné."
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setStatusFilter("ALL");
+                    setTab("all");
+                  }}
+                  className="mt-3 text-sm font-semibold text-primary hover:underline"
+                >
+                  Effacer les filtres
+                </button>
+              </div>
+            ) : (
+              <EmptyState
+                title="Aucun rapport soumis"
+                message="Les dernières versions des rapports de vos stagiaires apparaîtront ici."
+                actionLabel="Voir les stagiaires"
+                actionTo="/company/journaux"
+              />
+            )}
+          </div>
+        </>
+      ) : null}
+
+      <ReportReviewDialog
+        open={Boolean(reviewTarget)}
+        decision={reviewTarget?.decision}
+        comment={comment}
+        onCommentChange={setComment}
+        busy={busy}
+        onCancel={() => {
+          setReviewTarget(null);
+          setComment("");
+        }}
+        onConfirm={() => void submitReview()}
+      />
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
+    </section>
+  );
+}
+
+function FragmentRows({
+  report,
+  expanded,
+  history,
+  disabledReason,
+  hasDecision,
+  onConsult,
+  onHistory,
+  onRetryHistory,
+  onReview,
+}) {
+  const statusLabel = reportStatusLabels[report.status] || report.status;
+  return (
+    <>
+      <tr className="border-b border-line align-top text-sm last:border-0">
+        <td className="px-3 py-4 font-medium text-ink">{report.studentName}</td>
+        <td className="max-w-64 px-3 py-4 text-ink">
+          <span className="block truncate" title={report.reportTitle}>
+            {report.reportTitle}
+          </span>
+          <span className="mt-1 block text-xs text-ink-soft">
+            {report.offerTitle}
+          </span>
+        </td>
+        <td className="px-3 py-4 text-ink">v{report.version}</td>
+        <td className="whitespace-nowrap px-3 py-4 text-ink-soft">
+          {formatDate(report.submittedAt)}
+        </td>
+        <td className="px-3 py-4">
+          <DecisionBadge decision={report.teacherDecision} />
+        </td>
+        <td className="px-3 py-4">
+          <DecisionBadge decision={report.companyDecision} />
+        </td>
+        <td className="px-3 py-4">
+          <StatusBadge status={report.status} label={statusLabel} />
+        </td>
+        <td className="px-3 py-4">
+          <div className="flex min-w-56 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onConsult}
+              className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-primary hover:bg-bg"
+            >
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+              Consulter
+            </button>
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={onHistory}
+              className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-ink-soft hover:bg-bg"
+            >
+              <History className="size-3.5" aria-hidden="true" />
+              Historique
+              {expanded ? (
+                <ChevronUp className="size-3.5" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              )}
+            </button>
+            {hasDecision ? (
+              <>
+                <Tooltip content={disabledReason}>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex min-h-9 cursor-not-allowed items-center gap-1 rounded border border-line bg-bg px-2.5 text-xs font-medium text-ink-soft"
+                  >
+                    <Check className="size-3.5" aria-hidden="true" />
+                    Approuver
+                  </button>
+                </Tooltip>
+                <Tooltip content={disabledReason}>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex min-h-9 cursor-not-allowed items-center gap-1 rounded border border-line bg-bg px-2.5 text-xs font-medium text-ink-soft"
+                  >
+                    <MessageSquareText className="size-3.5" aria-hidden="true" />
+                    Demander des modifications
+                  </button>
+                </Tooltip>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onReview("APPROVED")}
+                  className="inline-flex min-h-9 items-center gap-1 rounded bg-primary px-2.5 text-xs font-semibold text-on-primary hover:brightness-95"
+                >
+                  <Check className="size-3.5" aria-hidden="true" />
+                  Approuver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onReview("CHANGES_REQUESTED")}
+                  className="inline-flex min-h-9 items-center gap-1 rounded border border-line px-2.5 text-xs font-medium text-ink hover:bg-bg"
+                >
+                  <MessageSquareText className="size-3.5" aria-hidden="true" />
+                  Demander des modifications
+                </button>
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-line">
+          <td colSpan={8} className="bg-bg p-4">
+            {history?.loading && (
+              <div className="grid gap-3" aria-label="Chargement de l’historique">
+                <Skeleton className="h-40 rounded" />
+              </div>
+            )}
+            {history?.error && (
+              <ErrorBanner
+                title="Impossible de charger l’historique"
+                message={history.error.message || "Une erreur est survenue."}
+                onRetry={onRetryHistory}
+              />
+            )}
+            {history && !history.loading && !history.error && (
+              history.items.length ? (
+                <div className="grid gap-3">
+                  {history.items.map((version) => (
+                    <ReportVersionCard
+                      key={version.version}
+                      report={version}
+                      showRule={false}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-ink-soft">
+                  Aucun historique de version n’est disponible.
+                </p>
+              )
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }

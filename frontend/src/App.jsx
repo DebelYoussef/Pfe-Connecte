@@ -4,10 +4,13 @@ import CompanyHome from "./components/Company/CompanyHome";
 import CompanyApplications from "./components/Company/CompanyApplications";
 import CompanyConvention from "./components/Company/CompanyConvention";
 import CompanyConventions from "./components/Company/CompanyConventions";
+import CompanyJournalDetail from "./components/Company/CompanyJournalDetail";
+import CompanyJournals from "./components/Company/CompanyJournals";
 import CompanyLayout from "./components/Company/CompanyLayout";
 import CompanyOfferDetail from "./components/Company/CompanyOfferDetail";
 import CompanyOfferForm from "./components/Company/CompanyOfferForm";
 import CompanyOffers from "./components/Company/CompanyOffers";
+import CompanyReports from "./components/Company/CompanyReports";
 import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./components/Signup";
@@ -153,18 +156,12 @@ export default function App() {
           path="conventions/:conventionId"
           element={<CompanyConvention />}
         />
-        <Route
-          path="journaux"
-          element={<CompanyPlaceholder title="Journaux" />}
-        />
+        <Route path="journaux" element={<CompanyJournals />} />
         <Route
           path="journaux/:studentId"
-          element={<CompanyPlaceholder title="Journaux" />}
+          element={<CompanyJournalDetail />}
         />
-        <Route
-          path="rapports"
-          element={<CompanyPlaceholder title="Rapports" />}
-        />
+        <Route path="rapports" element={<CompanyReports />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="profil" element={<CompanyPlaceholder title="Mon profil" />} />
         <Route path="profile" element={<Navigate to="/company/profil" replace />} />

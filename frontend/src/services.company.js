@@ -361,12 +361,21 @@ function createStore(companyId) {
     makeConvention({ id: 404, app: confirmed[3], companyId, state: "APPROVED", days: 25 }),
   ];
   const approvedInterns = conventions.filter((item) => item.state === "APPROVED");
-  const interns = approvedInterns.map((convention) => ({
+  const interns = approvedInterns.map((convention, index) => ({
     studentId: convention.studentId,
     conventionId: convention.conventionId,
-    // NOT IN API YET: expected and late weeks are derived internship tracking metadata.
-    expectedWeeks: [currentIsoWeek(-2), currentIsoWeek(-1), currentIsoWeek()],
-    lateWeeks: [currentIsoWeek()],
+    // NOT IN API YET: internship dates and expected weeks are mock tracking metadata.
+    expectedWeeks:
+      index === 0
+        ? [currentIsoWeek(-2), currentIsoWeek(-1), currentIsoWeek()]
+        : [
+            currentIsoWeek(-4),
+            currentIsoWeek(-3),
+            currentIsoWeek(-2),
+            currentIsoWeek(-1),
+            currentIsoWeek(),
+          ],
+    startDate: daysAgo(index === 0 ? 14 : 28).slice(0, 10),
   }));
   const journals = [
     {
@@ -388,19 +397,19 @@ function createStore(companyId) {
     },
     {
       studentId: interns[1].studentId,
-      week: currentIsoWeek(-2),
+      week: currentIsoWeek(-4),
       content: "Analyse des données disponibles et préparation du prototype.",
-      submittedAt: daysAgo(13),
+      submittedAt: daysAgo(27),
       validated: true,
       validatedBy: companyId,
-      validatedAt: daysAgo(11),
+      validatedAt: daysAgo(25),
       comment: "Travail validé, penser à préciser les sources.",
     },
     {
       studentId: interns[1].studentId,
-      week: currentIsoWeek(-1),
+      week: currentIsoWeek(-3),
       content: "Comparaison des résultats et rédaction des premières observations.",
-      submittedAt: daysAgo(4),
+      submittedAt: daysAgo(20),
       validated: false,
     },
   ];
@@ -635,11 +644,83 @@ function enrichConvention(store, convention) {
 }
 
 function enrichReport(store, report) {
+  const intern = store.interns.find((item) => item.studentId === report.studentId);
+  const convention = intern
+    ? store.conventions.find(
+        (item) => item.conventionId === intern.conventionId,
+      )
+    : null;
+  const offer = convention ? offerFor(store, convention.offerId) : null;
   return {
     ...report,
-    // NOT IN API YET: studentName is joined from the mock user directory.
+    // NOT IN API YET: company list rows join student and offer details.
     studentName: studentName(store, report.studentId),
+    offerTitle: offer?.title || "Offre indisponible",
+    // NOT IN API YET: the API does not expose a report title.
+    reportTitle: report.reportTitle || `Rapport de stage — ${offer?.title || "Stage"}`,
   };
+}
+
+function findCompanyIntern(store, companyId, studentId) {
+  const intern = store.interns.find((item) => item.studentId === studentId);
+  const convention = intern
+    ? store.conventions.find(
+        (item) =>
+          item.conventionId === intern.conventionId &&
+          item.companyId === companyId &&
+          item.state === "APPROVED",
+      )
+    : null;
+  if (!intern || !convention)
+    throw fail(403, "FORBIDDEN", "Ce stagiaire ne fait pas partie de votre entreprise.");
+  return { intern, convention };
+}
+
+function latestReportsForCompany(store, companyId) {
+  const internIds = new Set(
+    store.interns
+      .filter((intern) => {
+        const convention = store.conventions.find(
+          (item) => item.conventionId === intern.conventionId,
+        );
+        return convention?.companyId === companyId && convention.state === "APPROVED";
+      })
+      .map((intern) => intern.studentId),
+  );
+  const latest = new Map();
+  store.reports
+    .filter(
+      (report) => report.companyId === companyId && internIds.has(report.studentId),
+    )
+    .sort((a, b) => Number(b.version) - Number(a.version))
+    .forEach((report) => {
+      if (!latest.has(report.studentId)) latest.set(report.studentId, report);
+    });
+  return [...latest.values()].sort((a, b) =>
+    b.submittedAt.localeCompare(a.submittedAt),
+  );
+}
+
+function reportStatus(companyDecision, teacherDecision) {
+  if (
+    companyDecision === "CHANGES_REQUESTED" ||
+    teacherDecision === "CHANGES_REQUESTED"
+  )
+    return "CHANGES_REQUESTED";
+  if (companyDecision === "APPROVED" && teacherDecision === "APPROVED")
+    return "VALIDATED";
+  return "UNDER_REVIEW";
+}
+
+function validateReportDecision(decision, comment) {
+  if (!["APPROVED", "CHANGES_REQUESTED"].includes(decision))
+    throw fail(400, "VALIDATION_ERROR", "La décision est invalide.");
+  const value = String(comment ?? "");
+  if (value.length > 2000)
+    throw fail(400, "VALIDATION_ERROR", "Le commentaire ne peut pas dépasser 2000 caractères.");
+  if (decision === "CHANGES_REQUESTED" && !value.trim())
+    throw fail(400, "VALIDATION_ERROR", "Un commentaire est obligatoire pour demander des modifications.");
+  return value.trim();
 }
 
 export async function getMe() {
@@ -1131,23 +1212,10 @@ export async function rejectConvention(conventionId, { reason } = {}) {
   return wait(copy(enrichConvention(store, convention)));
 }
 
-export async function getConventionPdfUrl(conventionId) {
-  const companyId = currentCompanyId();
-  if (REAL.conventions)
-    return api(
-      `/v1/conventions/${encodeURIComponent(conventionId)}/pdf-url`,
-    );
-
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  const lines = [
-    "CONVENTION DE STAGE",
-    convention.shortRef,
-    ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 4),
-    `Empreinte : ${convention.pdfSha256}`,
-  ]
+function createPdfDataUrl(lines) {
+  const safeLines = lines
     .map((line) =>
-      line
+      String(line)
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^\x20-\x7E]/g, "?")
@@ -1158,7 +1226,7 @@ export async function getConventionPdfUrl(conventionId) {
     "BT",
     "/F1 12 Tf",
     "50 760 Td",
-    ...lines.flatMap((line, index) => [
+    ...safeLines.flatMap((line, index) => [
       index ? "0 -18 Td" : "",
       `(${line}) Tj`,
     ]),
@@ -1185,8 +1253,26 @@ export async function getConventionPdfUrl(conventionId) {
     pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
   });
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceOffset}\n%%EOF`;
+  return `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`;
+}
+
+export async function getConventionPdfUrl(conventionId) {
+  const companyId = currentCompanyId();
+  if (REAL.conventions)
+    return api(
+      `/v1/conventions/${encodeURIComponent(conventionId)}/pdf-url`,
+    );
+
+  const store = storeFor(companyId);
+  const convention = findCompanyConvention(store, companyId, conventionId);
+  const url = createPdfDataUrl([
+    "CONVENTION DE STAGE",
+    convention.shortRef,
+    ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 4),
+    `Empreinte : ${convention.pdfSha256}`,
+  ]);
   return wait({
-    url: `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`,
+    url,
     expiresIn: 300,
   });
 }
@@ -1280,20 +1366,62 @@ export async function listMyReports({ status, limit = 100, cursor = null } = {})
 export async function listMyInterns({ limit = 100, cursor = null } = {}) {
   const companyId = currentCompanyId();
   const store = storeFor(companyId);
-  const items = store.interns.map((intern) => ({
-    ...intern,
-    // NOT IN API YET: intern display details are joined from the mock student directory.
-    student: copy(studentFor(store, intern.studentId)),
-    convention: copy(store.conventions.find((item) => item.conventionId === intern.conventionId)),
-  }));
+  const items = store.interns.flatMap((intern) => {
+    const convention = store.conventions.find(
+      (item) =>
+        item.conventionId === intern.conventionId &&
+        item.companyId === companyId &&
+        item.state === "APPROVED",
+    );
+    if (!convention) return [];
+    const student = studentFor(store, intern.studentId);
+    const journals = store.journals.filter(
+      (entry) => entry.studentId === intern.studentId,
+    );
+    const expectedWeeks = [...(intern.expectedWeeks || [])];
+    const submittedWeeks = new Set(journals.map((entry) => entry.week));
+    const currentWeek = currentIsoWeek();
+    return [{
+      ...intern,
+      expectedWeeks,
+      // NOT IN API YET: late and draft states are derived from expected weeks.
+      lateWeeks: expectedWeeks.filter(
+        (week) => week < currentWeek && !submittedWeeks.has(week),
+      ),
+      // NOT IN API YET: counts and display details enrich the approved intern.
+      validatedCount: journals.filter((entry) => entry.validated).length,
+      toValidateCount: journals.filter((entry) => !entry.validated).length,
+      totalWeeks: expectedWeeks.length,
+      studentName: studentName(store, intern.studentId),
+      offerTitle: offerFor(store, convention.offerId)?.title || "Offre indisponible",
+      etab: student?.etab || convention.etab,
+      student: copy(student),
+      convention: copy(convention),
+    }];
+  });
   return wait(page(items, limit, cursor));
 }
 
 export async function listCompanyJournals({ studentId, limit = 100, cursor = null } = {}) {
   const companyId = currentCompanyId();
   const store = storeFor(companyId);
+  if (studentId) findCompanyIntern(store, companyId, studentId);
+  const internIds = new Set(
+    store.interns
+      .filter((intern) => {
+        const convention = store.conventions.find(
+          (item) => item.conventionId === intern.conventionId,
+        );
+        return convention?.companyId === companyId && convention.state === "APPROVED";
+      })
+      .map((intern) => intern.studentId),
+  );
   const items = store.journals
-    .filter((entry) => !studentId || entry.studentId === studentId)
+    .filter(
+      (entry) =>
+        internIds.has(entry.studentId) &&
+        (!studentId || entry.studentId === studentId),
+    )
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
     .map((entry) => ({
       ...entry,
@@ -1301,6 +1429,214 @@ export async function listCompanyJournals({ studentId, limit = 100, cursor = nul
       studentName: studentName(store, entry.studentId),
     }));
   return wait(page(items, limit, cursor));
+}
+
+export async function listStudentJournals(
+  studentId,
+  { limit = 100, cursor = null } = {},
+) {
+  const companyId = currentCompanyId();
+  if (REAL.journals) {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (cursor) query.set("cursor", cursor);
+    return api(
+      `/v1/students/${encodeURIComponent(studentId)}/journals?${query.toString()}`,
+    );
+  }
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  const items = store.journals
+    .filter((entry) => entry.studentId === studentId)
+    .sort((a, b) => b.week.localeCompare(a.week));
+  return wait(page(items, limit, cursor));
+}
+
+export async function validateJournalEntry(
+  studentId,
+  week,
+  { comment = "" } = {},
+) {
+  const companyId = currentCompanyId();
+  if (REAL.journals) {
+    const value = String(comment ?? "");
+    const result = await api(
+      `/v1/journals/${encodeURIComponent(studentId)}/${encodeURIComponent(week)}/validate`,
+      { method: "POST", body: value.trim() ? { comment: value.trim() } : {} },
+    );
+    notifyCompanyDataChanged();
+    return result;
+  }
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  const value = String(comment ?? "");
+  if (value.length > 1000)
+    throw fail(400, "VALIDATION_ERROR", "Le commentaire ne peut pas dépasser 1000 caractères.");
+  const entry = store.journals.find(
+    (item) => item.studentId === studentId && item.week === week,
+  );
+  if (!entry) throw fail(404, "NOT_FOUND", "Cette entrée de journal est introuvable.");
+  if (entry.validated)
+    throw fail(409, "CONFLICT", "Cette entrée a déjà été validée.");
+  entry.validated = true;
+  entry.validatedBy = companyId;
+  entry.validatedAt = new Date().toISOString();
+  if (value.trim()) entry.comment = value.trim();
+  else delete entry.comment;
+  notifyCompanyDataChanged();
+  return wait(copy(entry));
+}
+
+export async function listReportsForReview({ limit = 100, cursor = null } = {}) {
+  const companyId = currentCompanyId();
+  if (REAL.reports) {
+    const query = new URLSearchParams({
+      pending: "me",
+      limit: String(limit),
+    });
+    if (cursor) query.set("cursor", cursor);
+    return api(`/v1/reports?${query.toString()}`);
+  }
+  const store = storeFor(companyId);
+  const items = latestReportsForCompany(store, companyId).map((report) =>
+    enrichReport(store, report),
+  );
+  return wait(page(items, limit, cursor));
+}
+
+export async function listCompanyReportHistory(
+  studentId,
+  { limit = 100, cursor = null } = {},
+) {
+  const companyId = currentCompanyId();
+  if (REAL.reports)
+    throw fail(
+      501,
+      "NOT_IMPLEMENTED",
+      "L’historique complet des versions n’est pas disponible dans l’API.",
+    );
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  // NOT IN API YET: the ENT report endpoint does not expose previous versions.
+  const items = store.reports
+    .filter(
+      (report) =>
+        report.companyId === companyId && report.studentId === studentId,
+    )
+    .sort((a, b) => Number(b.version) - Number(a.version))
+    .map((report) => enrichReport(store, report));
+  return wait(page(items, limit, cursor));
+}
+
+export async function getReportPdfUrl(studentId, version) {
+  const companyId = currentCompanyId();
+  if (REAL.reports)
+    return api(
+      `/v1/reports/${encodeURIComponent(studentId)}/${encodeURIComponent(version)}/pdf-url`,
+    );
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  const report = store.reports.find(
+    (item) =>
+      item.companyId === companyId &&
+      item.studentId === studentId &&
+      Number(item.version) === Number(version),
+  );
+  if (!report) throw fail(404, "NOT_FOUND", "Ce rapport est introuvable.");
+  const enriched = enrichReport(store, report);
+  const url = createPdfDataUrl([
+    "RAPPORT DE STAGE",
+    enriched.reportTitle,
+    `Stagiaire : ${enriched.studentName}`,
+    `Offre : ${enriched.offerTitle}`,
+    `Version : ${report.version}`,
+    `Soumis le : ${report.submittedAt}`,
+    `Empreinte : ${report.sha256 || ""}`,
+  ]);
+  return wait({ url, expiresIn: 300 });
+}
+
+export async function reviewReport(
+  studentId,
+  version,
+  { decision, comment = "" } = {},
+) {
+  const companyId = currentCompanyId();
+  if (REAL.reports) {
+    const normalizedComment = validateReportDecision(decision, comment);
+    const result = await api(
+      `/v1/reports/${encodeURIComponent(studentId)}/${encodeURIComponent(version)}/review`,
+      {
+        method: "POST",
+        body: {
+          decision,
+          ...(decision === "CHANGES_REQUESTED"
+            ? { comment: normalizedComment }
+            : {}),
+        },
+      },
+    );
+    notifyCompanyDataChanged();
+    return result;
+  }
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  const normalizedComment = validateReportDecision(decision, comment);
+  const report = store.reports.find(
+    (item) =>
+      item.companyId === companyId &&
+      item.studentId === studentId &&
+      Number(item.version) === Number(version),
+  );
+  if (!report) throw fail(404, "NOT_FOUND", "Ce rapport est introuvable.");
+  const latest = latestReportsForCompany(store, companyId).find(
+    (item) => item.studentId === studentId,
+  );
+  if (
+    latest?.version !== report.version ||
+    report.companyDecision
+  )
+    throw fail(409, "CONFLICT", "Cette version a déjà été traitée ou n’est plus la plus récente.");
+  report.companyDecision = decision;
+  report.companyComment =
+    decision === "CHANGES_REQUESTED" ? normalizedComment : "";
+  report.status = reportStatus(report.companyDecision, report.teacherDecision);
+  notifyCompanyDataChanged();
+  return wait(copy(enrichReport(store, report)));
+}
+
+export async function simulateSupervisorReportDecision(
+  studentId,
+  version,
+  { decision, comment = "" } = {},
+) {
+  if (REAL.reports)
+    throw fail(
+      501,
+      "NOT_IMPLEMENTED",
+      "La simulation du retour de l’encadrant est réservée aux données de démonstration.",
+    );
+  const companyId = currentCompanyId();
+  const store = storeFor(companyId);
+  findCompanyIntern(store, companyId, studentId);
+  const normalizedComment = validateReportDecision(decision, comment);
+  const report = store.reports.find(
+    (item) =>
+      item.companyId === companyId &&
+      item.studentId === studentId &&
+      Number(item.version) === Number(version),
+  );
+  if (!report) throw fail(404, "NOT_FOUND", "Ce rapport est introuvable.");
+  const latest = latestReportsForCompany(store, companyId).find(
+    (item) => item.studentId === studentId,
+  );
+  if (latest?.version !== report.version || report.teacherDecision)
+    throw fail(409, "CONFLICT", "Cette version a déjà été traitée ou n’est plus la plus récente.");
+  report.teacherDecision = decision;
+  report.teacherComment =
+    decision === "CHANGES_REQUESTED" ? normalizedComment : "";
+  report.status = reportStatus(report.companyDecision, report.teacherDecision);
+  notifyCompanyDataChanged();
+  return wait(copy(enrichReport(store, report)));
 }
 
 export async function listCompanyNotifications({ limit = 100, cursor = null } = {}) {
@@ -1356,14 +1692,10 @@ export function getCompanyConventionsToSignCount() {
 export function getCompanyReportsToReviewCount() {
   const store = optionalStore();
   const companyId = getUser()?.userId;
-  return (
-    store?.reports.filter(
-      (report) =>
-        report.companyId === companyId &&
-        report.status === "UNDER_REVIEW" &&
-        !report.companyDecision,
-    ).length || 0
-  );
+  if (!store || !companyId) return 0;
+  return latestReportsForCompany(store, companyId).filter(
+    (report) => !report.companyDecision,
+  ).length;
 }
 
 export function getCompanyUnreadNotificationsCount() {

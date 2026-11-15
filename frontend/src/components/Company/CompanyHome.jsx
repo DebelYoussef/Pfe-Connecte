@@ -21,7 +21,7 @@ import {
   listMyConventions,
   listMyInterns,
   listMyOffers,
-  listMyReports,
+  listReportsForReview,
 } from "../../services.company";
 
 const notificationRoutes = {
@@ -83,7 +83,6 @@ export default function CompanyHome() {
   const [attempt, setAttempt] = useState(0);
   const user = getUser() || {};
   const displayName =
-    user.firstName?.trim() ||
     user.companyName?.trim() ||
     [user.firstName, user.lastName].filter(Boolean).join(" ") ||
     user.email ||
@@ -105,7 +104,7 @@ export default function CompanyHome() {
         listMyOffers({ limit: 100 }),
         listCompanyApplications({ limit: 100 }),
         listMyConventions({ limit: 100 }),
-        listMyReports({ limit: 100 }),
+        listReportsForReview({ limit: 100 }),
         listCompanyJournals({ limit: 100 }),
         listMyInterns({ limit: 100 }),
         listCompanyNotifications({ limit: 100 }),
@@ -141,9 +140,7 @@ export default function CompanyHome() {
     const conventionsToSign = data.conventions.filter(
       (convention) => convention.currentActorId === companyId,
     );
-    const reportsToReview = data.reports.filter(
-      (report) => report.status === "UNDER_REVIEW" && !report.companyDecision,
-    );
+    const reportsToReview = data.reports.filter((report) => !report.companyDecision);
     const journalsToReview = data.journals.filter((journal) => !journal.validated);
     const lateWeeks = data.interns.flatMap((intern) => intern.lateWeeks || []);
     return {
