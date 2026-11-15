@@ -9,12 +9,8 @@ import IconButton from "../ui/IconButton";
 import ThemeToggle from "../ThemeToggle";
 
 function initialsFor(user) {
-  const companyName = user?.companyName?.trim();
-  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
-  const name = user?.role === "ENT" ? companyName || fullName : fullName;
   return (
-    name
-      ?.split(/\s+/)
+    [user?.firstName, user?.lastName]
       .filter(Boolean)
       .map((value) => value[0])
       .join("")
@@ -35,12 +31,8 @@ function ShellContent({
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [user, setUser] = useState(() => getUser() || {});
   const navigate = useNavigate();
-  const personalName = [user.firstName, user.lastName]
-    .filter(Boolean)
-    .join(" ");
   const fullName =
-    (user.role === "ENT" && user.companyName?.trim()) ||
-    personalName ||
+    [user.firstName, user.lastName].filter(Boolean).join(" ") ||
     user.email ||
     "Utilisateur";
   const initials = initialsFor(user);
@@ -110,25 +102,27 @@ function ShellContent({
           )}
         </nav>
         <div className="sidebar-user">
-          <Link
-            className="sidebar-user-link interactive"
-            to={profilePath}
-            title="Mon profil"
-          >
-            <span className="user-avatar">{initials}</span>
-            <span>
-              <strong>{fullName}</strong>
-              <small>{roleLabel}</small>
-            </span>
-          </Link>
-          <button
-            type="button"
-            className="logout-button interactive"
-            onClick={() => setLogoutOpen(true)}
-          >
-            <LogOut size={16} aria-hidden="true" />
-            <span>Se déconnecter</span>
-          </button>
+          <div className="sidebar-user-row">
+            <Link
+              className="sidebar-user-link interactive"
+              to={profilePath}
+              title="Mon profil"
+            >
+              <span className="user-avatar">{initials}</span>
+              <span>
+                <strong>{fullName}</strong>
+                <small>{roleLabel}</small>
+              </span>
+            </Link>
+            <IconButton
+              label="Se déconnecter"
+              tooltip="Se déconnecter"
+              className="logout-button"
+              onClick={() => setLogoutOpen(true)}
+            >
+              <LogOut size={16} />
+            </IconButton>
+          </div>
         </div>
       </aside>
       {menuOpen && (
