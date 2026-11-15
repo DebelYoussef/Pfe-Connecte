@@ -11,6 +11,8 @@ export const REAL = {
   notifications: false,
 };
 
+export const COMPANY_DATA_CHANGED_EVENT = "pfe:company-data-changed";
+
 const WAIT_MS = 60;
 const OFFER_STATUSES = ["OPEN", "CLOSED", "FILLED"];
 const APPLICATION_STATUSES = [
@@ -39,6 +41,12 @@ const OTHER_COMPANY_ID = ID(999);
 const FOREIGN_OFFER_ID = ID(199);
 const stores = new Map();
 let profileExtras = {};
+
+function notifyCompanyDataChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(COMPANY_DATA_CHANGED_EVENT));
+  }
+}
 
 const wait = (value) =>
   new Promise((resolve) => setTimeout(() => resolve(value), WAIT_MS));
@@ -163,10 +171,10 @@ const APP_SEEDS = [
   { student: 4, offer: 3, status: "REJECTED", days: 5 },
   { student: 5, offer: 4, status: "DECLINED", days: 6 },
   { student: 1, offer: 1, status: "WITHDRAWN", days: 7 },
-  { student: 0, offer: 0, status: "CONFIRMED", days: 18 },
+  { student: 0, offer: 1, status: "CONFIRMED", days: 18 },
   { student: 2, offer: 2, status: "CONFIRMED", days: 35 },
-  { student: 4, offer: 3, status: "CONFIRMED", days: 24 },
-  { student: 5, offer: 4, status: "CONFIRMED", days: 30 },
+  { student: 4, offer: 4, status: "CONFIRMED", days: 24 },
+  { student: 5, offer: 3, status: "CONFIRMED", days: 30 },
 ];
 
 function createApplication(seed, companyId, offers) {
@@ -772,6 +780,7 @@ export async function updateOffer(offerId, patch) {
     });
   }
   Object.assign(current, next);
+  notifyCompanyDataChanged();
   return wait(copy(current));
 }
 
@@ -790,11 +799,164 @@ export function getMyOfferStats() {
 export function getOfferApplicationCounts() {
   const store = optionalStore();
   if (!store) return {};
+  const companyId = getUser()?.userId;
   const counts = {};
-  for (const application of store.applications) {
+  for (const application of store.applications.filter(
+    (item) => item.companyId === companyId,
+  )) {
     counts[application.offerId] = (counts[application.offerId] || 0) + 1;
   }
   return counts;
+}
+
+function countApplicationStatuses(applications) {
+  const counts = Object.fromEntries(
+    APPLICATION_STATUSES.map((status) => [status, 0]),
+  );
+  for (const application of applications) counts[application.status] += 1;
+  return { ...counts, total: applications.length };
+}
+
+export function getOfferApplicationStatusCounts(offerId) {
+  const store = optionalStore();
+  const companyId = getUser()?.userId;
+  const applications =
+    store?.applications.filter(
+      (application) =>
+        application.companyId === companyId &&
+        (!offerId || application.offerId === offerId),
+    ) || [];
+  return countApplicationStatuses(applications);
+}
+
+export function getCompanyApplicationStatusCounts() {
+  return getOfferApplicationStatusCounts();
+}
+
+export async function listOfferApplications(
+  offerId,
+  { limit = 100, cursor = null } = {},
+) {
+  const companyId = currentCompanyId();
+  if (REAL.applications) {
+    const query = new URLSearchParams();
+    if (limit) query.set("limit", String(limit));
+    if (cursor) query.set("cursor", cursor);
+    const suffix = query.size ? `?${query}` : "";
+    const result = await api(
+      `/v1/offers/${encodeURIComponent(offerId)}/applications${suffix}`,
+    );
+    return {
+      ...result,
+      items: result.items.map((application) => ({
+        ...application,
+        // NOT IN API YET: profile details are mock-only display enrichments.
+        studentName: "Étudiant",
+        specialty: "",
+        institution: "",
+        skills: [],
+        gouvernorat: "",
+        cvAvailable: false,
+      })),
+    };
+  }
+
+  const store = storeFor(companyId);
+  findOffer(store, offerId, companyId);
+  const now = new Date().toISOString();
+  let changed = false;
+  for (const application of store.applications) {
+    if (
+      application.companyId === companyId &&
+      application.offerId === offerId &&
+      application.status === "PENDING"
+    ) {
+      application.status = "VIEWED";
+      application.viewedAt = now;
+      application.updatedAt = now;
+      changed = true;
+    }
+  }
+  if (changed) notifyCompanyDataChanged();
+
+  const items = store.applications
+    .filter(
+      (application) =>
+        application.companyId === companyId &&
+        application.offerId === offerId,
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((application) => {
+      const student = studentFor(store, application.studentId);
+      return {
+        ...enrichApplication(store, application),
+        // NOT IN API YET: these values are joined from the mocked student record.
+        specialty: student?.specialty || "",
+        institution: student?.etab || "",
+        skills: [...(student?.skills || [])],
+        gouvernorat: student?.gouvernorat || "",
+        cvAvailable: false,
+      };
+    });
+  return wait(page(items, limit, cursor));
+}
+
+const COMPANY_ACTION_TARGETS = {
+  in_progress: {
+    status: "IN_PROGRESS",
+    allowedFrom: ["PENDING", "VIEWED"],
+  },
+  accept: {
+    status: "ACCEPTED",
+    allowedFrom: ["PENDING", "VIEWED", "IN_PROGRESS"],
+  },
+  reject: {
+    status: "REJECTED",
+    allowedFrom: ["PENDING", "VIEWED", "IN_PROGRESS", "ACCEPTED"],
+  },
+};
+
+export async function actOnApplication(offerId, studentId, action) {
+  const companyId = currentCompanyId();
+  if (["confirm", "decline", "withdraw"].includes(action)) {
+    throw fail(403, "FORBIDDEN", "Cette action est réservée à l’étudiant.");
+  }
+  const transition = COMPANY_ACTION_TARGETS[action];
+  if (!transition) {
+    throw fail(400, "VALIDATION_ERROR", "Cette action de candidature est inconnue.");
+  }
+
+  if (REAL.applications) {
+    const application = await api(
+      `/v1/applications/${encodeURIComponent(offerId)}/${encodeURIComponent(studentId)}`,
+      { method: "PATCH", body: { action } },
+    );
+    notifyCompanyDataChanged();
+    return application;
+  }
+
+  const store = storeFor(companyId);
+  findOffer(store, offerId, companyId);
+  const application = store.applications.find(
+    (item) => item.offerId === offerId && item.studentId === studentId,
+  );
+  if (!application) {
+    throw fail(404, "NOT_FOUND", "Cette candidature est introuvable.");
+  }
+  if (application.companyId !== companyId) {
+    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas gérer cette candidature.");
+  }
+  if (!transition.allowedFrom.includes(application.status)) {
+    throw fail(409, "CONFLICT", "Cette transition de candidature n’est pas autorisée.", {
+      from: application.status,
+      action,
+    });
+  }
+
+  application.status = transition.status;
+  application.updatedAt = new Date().toISOString();
+  notifyCompanyDataChanged();
+  return wait(enrichApplication(store, application));
 }
 
 export async function listCompanyApplications({

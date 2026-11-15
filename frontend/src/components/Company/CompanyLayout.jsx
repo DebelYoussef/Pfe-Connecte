@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Bell,
   BookOpen,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import AppShell from "../layout/AppShell";
 import {
+  COMPANY_DATA_CHANGED_EVENT,
   getCompanyApplicationsToProcessCount,
   getCompanyConventionsToSignCount,
   getCompanyReportsToReviewCount,
@@ -62,6 +64,14 @@ const notificationService = {
 };
 
 export default function CompanyLayout() {
+  const [, refreshBadges] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => refreshBadges((value) => value + 1);
+    window.addEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+  }, []);
+
   return (
     <AppShell
       roleLabel="Entreprise"
