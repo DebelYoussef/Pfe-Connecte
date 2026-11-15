@@ -1,0 +1,2 @@
+import { useId, useState } from 'react'
+export default function Tooltip({ content, children }) { const id=useId();const [visible,setVisible]=useState(false);return <span className="tooltip-wrap" onMouseEnter={()=>setVisible(true)} onMouseLeave={()=>setVisible(false)} onFocus={()=>setVisible(true)} onBlur={()=>setVisible(false)}><span aria-describedby={visible?id:undefined}>{children}</span>{visible&&<span id={id} className="tooltip" role="tooltip">{content}</span>}</span> }
