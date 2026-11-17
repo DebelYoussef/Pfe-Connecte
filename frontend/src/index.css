@@ -2605,6 +2605,7 @@ h2 {
 }
 .status-badge {
   display: inline-flex;
+  white-space: nowrap;
   padding: 5px 8px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--primary) 12%, transparent);

@@ -8,7 +8,6 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getUser } from "../../auth";
 import AppShell from "./AppShell";
 import {
   RESPONSABLE_DATA_CHANGED_EVENT,

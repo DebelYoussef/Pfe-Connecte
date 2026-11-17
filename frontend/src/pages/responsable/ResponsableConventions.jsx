@@ -8,6 +8,11 @@ import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { getUser } from "../../auth";
 import {
+  getApprovedCount,
+  getBlockedCount,
+  getDraftCount,
+  getInProgressCount,
+  getConventionsToSignCount,
   isBlocked,
   listConventions,
 } from "../../services.responsable";
@@ -87,11 +92,11 @@ export default function ResponsableConventions() {
   useEffect(() => { void load(); }, [load]);
 
   const counts = useMemo(() => ({
-    TO_SIGN: countItems.filter((item) => item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${getUser()?.etab}`).length,
-    DRAFT: countItems.filter((item) => item.state === "DRAFT").length,
-    IN_PROGRESS: countItems.filter((item) => ["SUBMITTED", "SIGNED_STUDENT"].includes(item.state)).length,
-    BLOCKED: countItems.filter(isBlocked).length,
-    APPROVED: countItems.filter((item) => item.state === "APPROVED").length,
+    TO_SIGN: getConventionsToSignCount(countItems),
+    DRAFT: getDraftCount(countItems),
+    IN_PROGRESS: getInProgressCount(countItems),
+    BLOCKED: getBlockedCount(countItems),
+    APPROVED: getApprovedCount(countItems),
     ALL: countItems.length,
   }), [countItems]);
 

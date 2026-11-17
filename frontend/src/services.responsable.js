@@ -242,6 +242,42 @@ let notifications = [
   { id: "notif-8", createdAt: daysAgo(7, 8), type: "REMINDER", title: "Rappel institutionnel", body: "Vérifiez les conventions en attente.", refType: "REMINDER", refId: "", read: true },
 ];
 
+const responsableExtrasKey = (userId) =>
+  `profile-extras-${userId}`;
+
+function readResponsableProfileExtras(userId) {
+  if (!userId) return {};
+  try {
+    const stored = JSON.parse(localStorage.getItem(responsableExtrasKey(userId)));
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function mergeResponsableProfileExtras(profile, partial = {}) {
+  const userId = profile?.userId || getUser()?.userId;
+  if (!userId) return { ...profile, links: partial.links || {} };
+  const current = readResponsableProfileExtras(userId);
+  const extras = {
+    ...current,
+    ...partial,
+  };
+  extras.links = {
+    ...(current.links || {}),
+    ...(partial.links || {}),
+  };
+  try {
+    localStorage.setItem(responsableExtrasKey(userId), JSON.stringify(extras));
+  } catch {
+    // L’aperçu reste disponible dans la session même si le stockage local est plein.
+  }
+  return {
+    ...profile,
+    ...extras,
+  };
+}
+
 export async function getMeResponsable() {
   if (REAL.me) return getRealMe();
   return wait({ ...user, etab: institution() });
@@ -264,11 +300,21 @@ export async function updateMeResponsable(partial) {
 }
 
 export async function getMe() {
-  return getMeResponsable();
+  const profile = await getMeResponsable();
+  return wait({
+    ...profile,
+    ...readResponsableProfileExtras(profile.userId || getUser()?.userId),
+  });
 }
 
 export async function updateMe(partial) {
-  return updateMeResponsable(partial);
+  const profile = await updateMeResponsable(partial);
+  const extras = {};
+  for (const key of ["avatarUrl", "bio", "contactEmail", "links"]) {
+    if (partial[key] !== undefined) extras[key] = partial[key];
+  }
+  const merged = mergeResponsableProfileExtras(profile, extras);
+  return wait(merged);
 }
 
 export async function listConventions({ withoutSupervisor = false, limit = 100, cursor } = {}) {
@@ -368,6 +414,28 @@ export function getDraftConventions(items = conventions) {
 
 export function getDraftCount(items = conventions) {
   return getDraftConventions(items).length;
+}
+
+export function getInProgressConventions(items = conventions) {
+  return items.filter(
+    (item) =>
+      item.etab === institution() &&
+      ["SUBMITTED", "SIGNED_STUDENT"].includes(item.state),
+  );
+}
+
+export function getInProgressCount(items = conventions) {
+  return getInProgressConventions(items).length;
+}
+
+export function getApprovedConventions(items = conventions) {
+  return items.filter(
+    (item) => item.etab === institution() && item.state === "APPROVED",
+  );
+}
+
+export function getApprovedCount(items = conventions) {
+  return getApprovedConventions(items).length;
 }
 
 export async function getConventionTemplate() {

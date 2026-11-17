@@ -9,11 +9,10 @@ import { getUser } from "../../auth";
 import {
   getBlockedCount,
   getDraftCount,
-  getConventionsToSignCount,
+  getToSignConventions,
   getDeadlineSettings,
   getWithoutSupervisorCount,
   listConventions,
-  listNotifications,
 } from "../../services.responsable";
 
 function formatDate(value) {
@@ -52,11 +51,7 @@ export default function ResponsableHome() {
     void load();
   }, []);
 
-  const toSign = items.filter(
-    (item) =>
-      item.state === "SIGNED_COMPANY" &&
-      item.currentActorId === `RESP#${user.etab}`,
-  );
+  const toSign = getToSignConventions(items);
   const withoutSupervisorCount = getWithoutSupervisorCount(items);
   const blockedCount = getBlockedCount(items);
   const draftCount = getDraftCount(items);
