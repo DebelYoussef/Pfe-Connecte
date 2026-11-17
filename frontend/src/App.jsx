@@ -34,6 +34,15 @@ import TeacherRequests from "./pages/teacher/TeacherRequests";
 import TeacherStudentDetail from "./pages/teacher/TeacherStudentDetail";
 import TeacherStudents from "./pages/teacher/TeacherStudents";
 import Notifications from "./pages/shared/Notifications";
+import ResponsableLayout from "./components/layout/ResponsableLayout";
+import ResponsableHome from "./pages/responsable/ResponsableHome";
+import ResponsableConventions from "./pages/responsable/ResponsableConventions";
+import ResponsableConventionDetail from "./pages/responsable/ResponsableConventionDetail";
+import ResponsableEncadrement from "./pages/responsable/ResponsableEncadrement";
+import ResponsableTemplate from "./pages/responsable/ResponsableTemplate";
+import ResponsableDeadline from "./pages/responsable/ResponsableDeadline";
+import ResponsableProfile from "./pages/responsable/ResponsableProfile";
+import ResponsablePlaceholder from "./pages/responsable/ResponsablePlaceholder";
 
 function PublicOnly({ children }) {
   if (isAuthenticated()) {
@@ -176,10 +185,20 @@ export default function App() {
         path="/responsable"
         element={
           <ProtectedRoute roles={["RESP"]}>
-            <RolePlaceholder title="Espace responsable" />
+            <ResponsableLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<ResponsableHome />} />
+        <Route path="conventions" element={<ResponsableConventions />} />
+        <Route path="conventions/:conventionId" element={<ResponsableConventionDetail />} />
+        <Route path="encadrement" element={<ResponsableEncadrement />} />
+        <Route path="modele" element={<ResponsableTemplate />} />
+        <Route path="echeance" element={<ResponsableDeadline />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="profil" element={<ResponsableProfile />} />
+        <Route path="*" element={<ResponsablePlaceholder />} />
+      </Route>
       <Route
         path="/admin"
         element={
