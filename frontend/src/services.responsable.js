@@ -97,6 +97,8 @@ function mockConvention(index, values) {
     studentAddress: values.studentAddress || "12 avenue Habib Bourguiba, Tunis",
     // NOT IN API YET
     studentPhone: values.studentPhone || "+216 22 345 678",
+    // NOT IN API YET
+    specialty: values.specialty || "Génie logiciel",
   };
 }
 
@@ -342,6 +344,16 @@ export function getWithoutSupervisorCount(items = conventions) {
   return getWithoutSupervisorConventions(items).length;
 }
 
+export function getAssignedSupervisions() {
+  return [...supervisionRecords.values()].filter(
+    (record) => record.etab === institution(),
+  );
+}
+
+export function getAssignedSupervisorCount() {
+  return getAssignedSupervisions().length;
+}
+
 export function getBlockedConventions(items = conventions) {
   return items.filter((item) => item.etab === institution() && isBlocked(item));
 }
@@ -362,25 +374,61 @@ export async function getConventionTemplate() {
   return wait({ ...template });
 }
 
-export async function updateConventionTemplate(text) {
+export async function putConventionTemplate({ text } = {}) {
+  const normalized = String(text ?? "");
+  if (!normalized.trim()) {
+    return mockError(
+      400,
+      "VALIDATION_ERROR",
+      "Le texte du modèle est requis.",
+      { fields: ["text"] },
+    );
+  }
   template = {
     ...template,
     version: template.version + 1,
-    text,
+    text: normalized,
     createdAt: new Date().toISOString(),
   };
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait({ ...template });
 }
 
+export async function updateConventionTemplate(text) {
+  return putConventionTemplate({ text });
+}
+
 export async function getDeadlineSettings() {
   return wait({ ...deadlineSettings });
 }
 
-export async function updateDeadlineSettings(partial) {
-  deadlineSettings = { ...deadlineSettings, ...partial };
+export async function putDeadlineSettings({ deadlineEnabled, deadline } = {}) {
+  if (typeof deadlineEnabled !== "boolean") {
+    return mockError(
+      400,
+      "VALIDATION_ERROR",
+      "Le statut d’activation est requis.",
+      { fields: ["deadlineEnabled"] },
+    );
+  }
+  if (deadlineEnabled && !deadline) {
+    return mockError(
+      400,
+      "VALIDATION_ERROR",
+      "Une date limite est requise lorsque l’échéance est active.",
+      { fields: ["deadline"] },
+    );
+  }
+  deadlineSettings = {
+    deadline: deadlineEnabled ? deadline : null,
+    deadlineEnabled,
+  };
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait({ ...deadlineSettings });
+}
+
+export async function updateDeadlineSettings(partial) {
+  return putDeadlineSettings(partial);
 }
 
 const teachers = [
@@ -392,25 +440,83 @@ const teachers = [
   { userId: "teacher-6", firstName: "Amel", lastName: "Jemai", etab: institution(), expertise: ["angular", "typescript", "java"] },
 ];
 
-export async function listTeachers() {
-  return wait(teachers.filter((teacher) => teacher.etab === institution()));
+export async function listTeachers({ expertise, limit = 100, cursor } = {}) {
+  let items = teachers.filter((teacher) => teacher.etab === institution());
+  if (expertise) {
+    items = items.filter((teacher) =>
+      teacher.expertise.some(
+        (value) => value.toLocaleLowerCase("fr") === String(expertise).toLocaleLowerCase("fr"),
+      ),
+    );
+  }
+  const safeLimit = Number(limit) > 0 ? Number(limit) : 100;
+  const start = cursor ? Math.max(0, Number(cursor) || 0) : 0;
+  const page = items.slice(start, start + safeLimit);
+  const nextIndex = start + safeLimit;
+  return wait({
+    items: page,
+    nextCursor: nextIndex < items.length ? String(nextIndex) : undefined,
+  });
 }
 
-export async function assignSupervisor(conventionId, teacherId) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
+export async function assignSupervisor(studentId, teacherId) {
+  const convention = conventions.find((item) => item.studentId === studentId);
   const teacher = teachers.find((item) => item.userId === teacherId);
-  if (!convention || !teacher) return mockError(404, "NOT_FOUND", "Convention ou enseignant introuvable.");
+  if (!teacher) {
+    return mockError(404, "NOT_FOUND", "Enseignant introuvable.");
+  }
+  if (teacher.etab !== institution()) {
+    return mockError(404, "NOT_FOUND", "Enseignant introuvable dans cet établissement.");
+  }
+  if (!convention) {
+    return mockError(404, "NOT_FOUND", "Étudiant introuvable.");
+  }
+  if (convention.state !== "APPROVED") {
+    return mockError(409, "CONFLICT", "La convention de cet étudiant n’est pas approuvée.");
+  }
+  const existing = supervisionRecords.get(studentId);
+  if (
+    existing &&
+    ["ACCEPTED", "ASSIGNED"].includes(existing.status)
+  ) {
+    return mockError(409, "CONFLICT", "Cet étudiant possède déjà un encadrement.");
+  }
   convention.noSupervisorEtab = undefined;
   convention.supervisorName = `${teacher.firstName} ${teacher.lastName}`;
-  supervisionRecords.set(convention.studentId, {
-    studentId: convention.studentId,
+  const timestamp = new Date().toISOString();
+  const supervision = {
+    studentId,
     teacherId,
     status: "ASSIGNED",
     etab: institution(),
     assignedBy: getUser()?.userId,
-  });
+    respondedAt: timestamp,
+  };
+  supervisionRecords.set(studentId, supervision);
+  notifications.unshift(
+    {
+      id: `notif-supervision-student-${studentId}-${Date.now()}`,
+      createdAt: timestamp,
+      type: "SUPERVISION",
+      title: "Encadrant affecté",
+      body: `${teacher.firstName} ${teacher.lastName} vous a été affecté comme encadrant.`,
+      refType: "SUPERVISION",
+      refId: studentId,
+      read: false,
+    },
+    {
+      id: `notif-supervision-teacher-${teacherId}-${Date.now()}`,
+      createdAt: timestamp,
+      type: "SUPERVISION",
+      title: "Nouvelle affectation",
+      body: `${convention.studentName} vous a été affecté comme étudiant encadré.`,
+      refType: "SUPERVISION",
+      refId: studentId,
+      read: false,
+    },
+  );
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ conventionId, studentId: convention.studentId, teacherId, status: "ASSIGNED", etab: institution() });
+  return wait(supervision);
 }
 
 export async function signConvention(conventionId) {
