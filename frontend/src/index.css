@@ -1985,7 +1985,7 @@ h2 {
   font-size: 11px;
   text-align: right;
 }
-.paper-document h2 {
+.paper-document h3 {
   margin: 38px 0 23px;
   font-size: 29px;
 }
@@ -2025,7 +2025,7 @@ h2 {
   border-radius: 4px;
   background: var(--surface);
 }
-.info-card h2 {
+.info-card h3 {
   margin: 0 0 15px;
   font:
     600 21px "Source Serif 4",
@@ -3737,7 +3737,7 @@ h2 {
 .convention-disabled-action {
   display: inline-flex;
 }
-.convention-history h2 {
+.convention-history h3 {
   margin-bottom: 16px;
 }
 .convention-timeline {
@@ -3976,7 +3976,7 @@ h2 {
     background: #fff !important;
     color: #000 !important;
   }
-  .paper-document h2,
+  .paper-document h3,
   .paper-document p,
   .paper-document strong,
   .paper-document span,
@@ -5975,6 +5975,281 @@ a.company-dashboard-stat:hover {
 .company-journals-page button:disabled,
 .company-journal-detail button:disabled,
 .company-reports-page button:disabled { cursor: not-allowed; opacity: .6; }
+
+.responsable-conventions-page {
+  display: grid;
+  gap: 18px;
+}
+.responsable-convention-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.responsable-convention-stat {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.responsable-convention-stat:hover,
+.responsable-convention-stat.active {
+  border-color: var(--primary);
+}
+.responsable-convention-stat strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.responsable-convention-stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.responsable-convention-tools {
+  display: grid;
+  gap: 10px;
+}
+.responsable-convention-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.responsable-convention-tabs button {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.responsable-convention-tabs button.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+.responsable-convention-tabs button span {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.responsable-convention-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.responsable-convention-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.responsable-convention-list {
+  display: grid;
+  gap: 8px;
+}
+.responsable-convention-list article {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1fr) minmax(150px, 0.7fr) 130px auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.responsable-student-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.responsable-convention-row-main,
+.responsable-convention-status,
+.responsable-step-age {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.responsable-convention-row-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.responsable-convention-row-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.responsable-sign-marker {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 700;
+}
+.responsable-convention-row-main small,
+.responsable-convention-company,
+.responsable-convention-status small,
+.responsable-step-age span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.responsable-step-age code {
+  color: var(--muted);
+  font-size: 10px;
+}
+.responsable-step-age.blocked span {
+  color: var(--accent);
+  font-weight: 700;
+}
+.responsable-load-more {
+  justify-self: center;
+  min-width: 150px;
+}
+.responsable-convention-detail-page {
+  display: grid;
+  gap: 18px;
+}
+.responsable-convention-detail-grid {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+.responsable-edit-document {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 490px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.responsable-edit-document .responsable-textarea {
+  flex: 1;
+  min-height: 330px;
+}
+.responsable-edit-document .hero-button {
+  align-self: flex-end;
+}
+.responsable-corrected-label {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.responsable-sign-fingerprint,
+.responsable-rejection-field {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.responsable-sign-fingerprint code {
+  width: max-content;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-family: monospace;
+}
+.responsable-rejection-field textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.responsable-rejection-field small {
+  justify-self: end;
+  color: var(--muted);
+}
+.responsable-information-card h3,
+.convention-history h3,
+.verify-card h3 {
+  margin: 0 0 15px;
+  font: 600 21px/1.2 var(--serif);
+}
+.convention-detail-card h3 {
+  margin: 0;
+  font: 600 20px/1.25 var(--serif);
+}
+.danger-outline-button {
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.danger-outline-button:disabled,
+.outlined-action:disabled,
+.responsable-edit-document .hero-button:disabled {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.responsable-edit-document .hero-button:hover:disabled,
+.danger-outline-button:hover:disabled {
+  background: var(--bg);
+}
+
+@media (max-width: 1100px) {
+  .responsable-convention-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .responsable-convention-list article {
+    grid-template-columns: 42px minmax(150px, 1fr) minmax(140px, 0.7fr) auto;
+  }
+  .responsable-step-age {
+    display: none;
+  }
+  .responsable-convention-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .responsable-convention-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .responsable-convention-list article {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+  .responsable-convention-status {
+    grid-column: 2;
+  }
+  .responsable-convention-list article > a {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
 
 /* Responsable */
 .responsable-hero {

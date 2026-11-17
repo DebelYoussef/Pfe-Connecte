@@ -1,6 +1,11 @@
 import { getUser, saveSession } from "./auth";
 import { getToken } from "./auth";
-import { getMe as getRealMe, updateMe as updateRealMe } from "./services";
+import {
+  getConventionTextHash,
+  getMe as getRealMe,
+  updateMe as updateRealMe,
+} from "./services";
+import { api } from "./api";
 
 export const REAL = {
   me: true,
@@ -18,8 +23,8 @@ const delay = 40;
 const wait = (value) =>
   new Promise((resolve) => setTimeout(() => resolve(value), delay));
 
-const mockError = (status, code, message) =>
-  Promise.reject({ status, code, message, details: {} });
+const mockError = (status, code, message, details = {}) =>
+  Promise.reject({ status, code, message, details });
 
 function daysAgo(amount, hour = 12) {
   const date = new Date();
@@ -86,6 +91,12 @@ function mockConvention(index, values) {
     subjectTitle: values.subjectTitle,
     // NOT IN API YET
     supervisorName: values.supervisorName || null,
+    // NOT IN API YET
+    offerTitle: values.offerTitle || values.subjectTitle,
+    // NOT IN API YET
+    studentAddress: values.studentAddress || "12 avenue Habib Bourguiba, Tunis",
+    // NOT IN API YET
+    studentPhone: values.studentPhone || "+216 22 345 678",
   };
 }
 
@@ -188,6 +199,22 @@ let conventions = [
   };
 });
 
+conventions.push({
+  ...mockConvention(0, {
+    state: "SUBMITTED",
+    currentActorId: "student-foreign",
+    stepSince: daysAgo(2),
+    studentName: "Étudiant étranger",
+    companyName: "Entreprise extérieure",
+    subjectTitle: "Convention hors établissement",
+  }),
+  conventionId: "responsable-convention-foreign",
+  etab: institution() === "ETAB1" ? "ETAB2" : "ETAB1",
+  events: [
+    event("responsable-convention-foreign", daysAgo(2), "SUBMITTED", "student-foreign", "ETU", "DRAFT", "SUBMITTED"),
+  ],
+});
+
 let template = {
   etab: institution(),
   version: 3,
@@ -250,12 +277,21 @@ export async function listConventions({ withoutSupervisor = false, limit = 100, 
     // The default responsible queue includes the institution conventions.
   }
   const safeLimit = Number(limit) > 0 ? Number(limit) : 100;
-  return wait({ items: items.slice(0, safeLimit), nextCursor: undefined });
+  const start = cursor ? Math.max(0, Number(cursor) || 0) : 0;
+  const page = items.slice(start, start + safeLimit);
+  const nextIndex = start + safeLimit;
+  return wait({
+    items: page,
+    nextCursor: nextIndex < items.length ? String(nextIndex) : undefined,
+  });
 }
 
 export async function getConvention(conventionId) {
   const item = conventions.find((convention) => convention.conventionId === conventionId);
   if (!item) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (item.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
   return wait(item);
 }
 
@@ -380,16 +416,23 @@ export async function assignSupervisor(conventionId, teacherId) {
 export async function signConvention(conventionId) {
   const convention = conventions.find((item) => item.conventionId === conventionId);
   if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (convention.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
   if (convention.state !== "SIGNED_COMPANY") {
     return mockError(409, "CONFLICT", "Cette convention n’est pas en attente de votre signature.");
   }
+  if (convention.currentActorId !== `RESP#${institution()}`) {
+    return mockError(409, "CONFLICT", "Ce n’est pas le tour du responsable.");
+  }
+  const timestamp = new Date().toISOString();
   convention.state = "APPROVED";
-  convention.approvedAt = new Date().toISOString();
+  convention.approvedAt = timestamp;
   convention.noSupervisorEtab = institution();
   convention.finalSha256 = `final-hash-${convention.conventionId}`;
   convention.events.push(event(
     conventionId,
-    new Date().toISOString(),
+    timestamp,
     "APPROVED",
     `RESP#${institution()}`,
     "RESP",
@@ -398,27 +441,156 @@ export async function signConvention(conventionId) {
   ));
   convention.currentActorId = undefined;
   convention.stepSince = undefined;
+  notifications.unshift(
+    {
+      id: `notif-sign-${conventionId}-${Date.now()}`,
+      createdAt: timestamp,
+      type: "CONVENTION",
+      title: "Convention approuvée",
+      body: `La convention de ${convention.studentName} a été approuvée.`,
+      refType: "CONVENTION",
+      refId: conventionId,
+      read: false,
+    },
+    {
+      id: `notif-sign-company-${conventionId}-${Date.now()}`,
+      createdAt: timestamp,
+      type: "CONVENTION",
+      title: "Convention approuvée",
+      body: `La convention pour ${convention.companyName} est approuvée.`,
+      refType: "CONVENTION",
+      refId: conventionId,
+      read: false,
+    },
+  );
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait({ ...convention });
 }
 
-export async function correctConvention(conventionId, renderedText) {
+export async function rejectConvention(conventionId, { reason } = {}) {
   const convention = conventions.find((item) => item.conventionId === conventionId);
   if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (convention.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
+  const normalizedReason = String(reason ?? "").trim();
+  if (!normalizedReason || normalizedReason.length > 1000) {
+    return mockError(
+      400,
+      "VALIDATION_ERROR",
+      "Le motif doit contenir de 1 à 1 000 caractères.",
+      { fields: ["reason"] },
+    );
+  }
+  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY"].includes(convention.state)) {
+    return mockError(409, "CONFLICT", "Cette convention ne peut plus être refusée.");
+  }
+  const previousState = convention.state;
+  const timestamp = new Date().toISOString();
+  convention.events = convention.events.map((eventItem) =>
+    eventItem.type === "SIGNED"
+      ? { ...eventItem, invalidated: true }
+      : eventItem,
+  );
+  convention.state = "DRAFT";
+  convention.currentActorId = `RESP#${institution()}`;
+  convention.stepSince = timestamp;
+  convention.rejectionReason = normalizedReason;
+  convention.finalSha256 = undefined;
+  convention.approvedAt = undefined;
+  convention.events.push(event(
+    conventionId,
+    timestamp,
+    "REJECTED",
+    `RESP#${institution()}`,
+    "RESP",
+    previousState,
+    "DRAFT",
+    normalizedReason,
+  ));
+  window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
+  return wait({ ...convention });
+}
+
+export async function correctConvention(conventionId, input = {}) {
+  const convention = conventions.find((item) => item.conventionId === conventionId);
+  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (convention.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
+  const renderedText =
+    typeof input === "string" ? input : String(input.renderedText ?? "");
   if (convention.state !== "DRAFT") {
     return mockError(409, "CONFLICT", "Cette convention n’est pas un brouillon.");
   }
+  if (!renderedText.trim()) {
+    return mockError(
+      400,
+      "VALIDATION_ERROR",
+      "Le texte de la convention est requis.",
+      { fields: ["renderedText"] },
+    );
+  }
+  const oldHash = convention.pdfSha256;
+  const nextHash = await getConventionTextHash(renderedText);
   convention.renderedText = renderedText;
   convention.templateVersion = template.version;
+  convention.pdfSha256 = nextHash;
+  const timestamp = new Date().toISOString();
   convention.events.push(event(
     conventionId,
-    new Date().toISOString(),
+    timestamp,
     "MODIFIED",
     `RESP#${institution()}`,
     "RESP",
     "DRAFT",
     "DRAFT",
   ));
+  convention.events[convention.events.length - 1].oldHash = oldHash;
+  convention.events[convention.events.length - 1].newHash = nextHash;
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait({ ...convention });
+}
+
+export async function resubmitConvention(conventionId) {
+  const convention = conventions.find((item) => item.conventionId === conventionId);
+  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (convention.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
+  if (convention.state !== "DRAFT") {
+    return mockError(409, "CONFLICT", "Cette convention n’est pas un brouillon.");
+  }
+  const timestamp = new Date().toISOString();
+  convention.state = "SUBMITTED";
+  convention.currentActorId = convention.studentId;
+  convention.stepSince = timestamp;
+  convention.rejectionReason = undefined;
+  convention.events.push(event(
+    conventionId,
+    timestamp,
+    "RESUBMITTED",
+    `RESP#${institution()}`,
+    "RESP",
+    "DRAFT",
+    "SUBMITTED",
+  ));
+  window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
+  return wait({ ...convention });
+}
+
+export async function getConventionPdfUrl(conventionId) {
+  const convention = conventions.find((item) => item.conventionId === conventionId);
+  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
+  if (convention.etab !== institution()) {
+    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  }
+  const lines = [
+    "CONVENTION DE STAGE",
+    convention.shortRef,
+    ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 6),
+  ];
+  const pdf = `%PDF-1.4\n${lines.join("\n")}\n%%EOF`;
+  const url = `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`;
+  return wait({ url, expiresIn: 300 });
 }

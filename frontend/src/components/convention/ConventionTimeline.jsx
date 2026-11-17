@@ -21,10 +21,15 @@ function getEventTitle(event) {
     return `Convention signée par ${ROLE_LABELS[event.actorRole] ?? event.actorRole}`;
   }
   if (event.type === "APPROVED") return "Convention approuvée";
+  if (event.type === "RESUBMITTED") return "Convention renvoyée pour signature";
   if (event.type === "REJECTED") {
     return `Convention refusée par ${ROLE_LABELS[event.actorRole] ?? event.actorRole}`;
   }
-  if (event.type === "MODIFIED") return "Informations modifiées par l’étudiant";
+  if (event.type === "MODIFIED") {
+    return event.actorRole === "RESP"
+      ? "Convention corrigée par le responsable"
+      : "Informations modifiées par l’étudiant";
+  }
   return event.message || "Événement de convention";
 }
 

@@ -16,7 +16,7 @@ export default function ConventionDocument({
           Version {convention.templateVersion}
         </span>
       </div>
-      <h2>Convention de stage</h2>
+      <h3>Convention de stage</h3>
       <p className="document-rendered-text">{convention.renderedText}</p>
       <p>
         La durée et les conditions du stage sont définies avec l’entreprise

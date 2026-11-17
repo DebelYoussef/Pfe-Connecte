@@ -17,7 +17,7 @@ export default function VerificationCard({ convention, onCopy }) {
 
   return (
     <div className="info-card verify-card">
-      <h2>Vérification</h2>
+      <h3>Vérification</h3>
       {convention.state === "APPROVED" ? (
         <>
           <div className="qr-placeholder" aria-label="Code QR de vérification">
