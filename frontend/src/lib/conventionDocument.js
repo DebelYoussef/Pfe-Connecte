@@ -115,6 +115,54 @@ export function computeCompletion(snapshot, values = {}) {
   };
 }
 
+export function computePartyProgress(snapshot, values = {}) {
+  const progress = {
+    student: { done: 0, total: 0 },
+    company: { done: 0, total: 0 },
+  };
+  for (const section of snapshot?.sections || []) {
+    for (const field of section.fields || []) {
+      if (!["STUDENT", "COMPANY"].includes(field.source)) continue;
+      const party = field.source === "STUDENT" ? "student" : "company";
+      progress[party].total += 1;
+      if (isPresent(values[field.key])) progress[party].done += 1;
+    }
+  }
+  return progress;
+}
+
+export function getCompanyConventionAction(convention, companyId) {
+  if (!convention || convention.companyId !== companyId) return null;
+  if (convention.state === "APPROVED") return "APPROVED";
+
+  const completion = computeCompletion(
+    convention.templateSnapshot,
+    convention.values,
+  );
+  const frozen = Boolean(
+    convention.frozenHash || convention.signatures?.length,
+  );
+  if (!frozen && completion.company.done < completion.company.total) {
+    return "TO_COMPLETE";
+  }
+  if (
+    convention.state === "SIGNED_STUDENT" &&
+    convention.currentActorId === companyId &&
+    completion.complete
+  ) {
+    return "TO_SIGN";
+  }
+  return "IN_PROGRESS";
+}
+
+export function countCompanyConventionActions(conventions, companyId) {
+  return (conventions || []).filter((convention) =>
+    ["TO_COMPLETE", "TO_SIGN"].includes(
+      getCompanyConventionAction(convention, companyId),
+    ),
+  ).length;
+}
+
 function sortKeys(value) {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (!value || typeof value !== "object") return value;

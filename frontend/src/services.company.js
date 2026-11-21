@@ -1,10 +1,12 @@
 import { getToken, getUser, saveSession } from "./auth";
 import { api } from "./api";
 import {
+  getCompanyConventionActionCount,
   getConvention as getMockConvention,
   getConventions as listMockConventions,
   rejectConvention as rejectMockConvention,
   requestModification,
+  saveFields,
   signConvention as signMockConvention,
   toConventionView,
 } from "./mock/conventionStore";
@@ -1196,6 +1198,20 @@ export async function getConvention(conventionId) {
   return wait(toConventionView(await getMockConvention(conventionId)));
 }
 
+// NOT IN API YET: convention field updates are stored in the shared browser mock.
+export async function saveCompanyConventionFields(conventionId, values) {
+  const updated = await saveFields(conventionId, values);
+  notifyCompanyDataChanged();
+  return wait(toConventionView(updated));
+}
+
+// NOT IN API YET: convention modification requests are stored in the shared browser mock.
+export async function requestCompanyConventionModification(conventionId) {
+  const updated = await requestModification(conventionId);
+  notifyCompanyDataChanged();
+  return wait(toConventionView(updated));
+}
+
 export async function signConvention(conventionId) {
   if (REAL.conventions) {
     const updated = await api(
@@ -1647,15 +1663,10 @@ export function getCompanyApplicationsToProcessCount() {
 }
 
 export function getCompanyConventionsToSignCount() {
-  const store = optionalStore();
-  const companyId = getUser()?.userId;
-  return (
-    store?.conventions.filter(
-      (convention) =>
-        convention.companyId === companyId &&
-        convention.state === "SIGNED_STUDENT" &&
-        convention.currentActorId === companyId,
-    ).length || 0
+  const user = getUser();
+  // NOT IN API YET: demo company accounts share the C1 convention identity.
+  return getCompanyConventionActionCount(
+    user?.role === "ENT" ? "C1" : user?.userId,
   );
 }
 

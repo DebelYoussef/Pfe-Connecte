@@ -3,6 +3,7 @@ import { getUser } from "../auth";
 import {
   AUTO_BINDINGS,
   buildDocument,
+  countCompanyConventionActions,
   computeCompletion,
   etabName,
   resolveAuto,
@@ -520,6 +521,27 @@ async function readStore() {
     await writeStore(memoryStore);
   }
   return memoryStore;
+}
+
+export function getCompanyConventionActionCount(companyId) {
+  if (!companyId) return 0;
+  let raw;
+  try {
+    raw = browserStorage()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    throw storageError();
+  }
+  if (!raw) return 0;
+  let store;
+  try {
+    store = JSON.parse(raw);
+  } catch {
+    throw storageError();
+  }
+  if (!store || !Array.isArray(store.conventions)) {
+    throw storageError();
+  }
+  return countCompanyConventionActions(store.conventions, companyId);
 }
 
 async function writeStore(store) {

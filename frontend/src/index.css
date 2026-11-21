@@ -5906,6 +5906,81 @@ a.company-dashboard-stat:hover {
     overflow: visible;
   }
 }
+
+.company-convention-complete-marker {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.company-convention-completion-column {
+  display: grid;
+  flex: 0 0 156px;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.company-convention-completion-column > strong {
+  color: var(--text);
+  font-size: 11px;
+}
+.company-convention-mini-meter {
+  display: grid;
+  gap: 4px;
+}
+.company-convention-mini-meter > span {
+  white-space: nowrap;
+}
+.company-convention-mini-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg);
+}
+.company-convention-mini-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.company-convention-tabs button:hover,
+.company-convention-view:hover {
+  border-color: var(--primary);
+}
+.company-convention-tabs button:focus-visible,
+.company-convention-view:focus-visible,
+.danger-outline-button:focus-visible,
+.company-convention-rejection-field textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.company-convention-rejection-field textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.company-convention-detail-page .convention-state-banner {
+  margin-bottom: 0;
+}
+.company-convention-detail-page .convention-action-bar .danger-outline-button {
+  min-height: 42px;
+}
+@media (max-width: 760px) {
+  .company-convention-completion-column {
+    flex-basis: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .company-convention-completion-column > strong {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 560px) {
+  .company-convention-completion-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 680px) {
   .completion-meters,
   .student-fields-grid {
@@ -5966,7 +6041,7 @@ a.company-dashboard-stat:hover {
 }
 .company-convention-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 .company-convention-stat {
@@ -6031,6 +6106,7 @@ a.company-dashboard-stat:hover {
   background: var(--surface);
 }
 .company-convention-row-main {
+  flex: 1;
   min-width: 0;
 }
 .company-convention-row-heading {
@@ -6232,7 +6308,7 @@ a.company-dashboard-stat:hover {
 }
 @media (max-width: 760px) {
   .company-convention-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .company-convention-detail-skeleton > div {
     grid-template-columns: 1fr;
@@ -6249,7 +6325,7 @@ a.company-dashboard-stat:hover {
 }
 @media (max-width: 420px) {
   .company-convention-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
