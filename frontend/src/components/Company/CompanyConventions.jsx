@@ -6,11 +6,11 @@ import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
+import { COMPANY_DATA_CHANGED_EVENT, listConventions } from "../../services.company";
 import {
-  COMPANY_DATA_CHANGED_EVENT,
-  listConventions,
-} from "../../services.company";
-import { getUser } from "../../auth";
+  computePartyProgress,
+  getCompanyConventionAction,
+} from "../../lib/conventionDocument";
 
 const STATE_LABELS = {
   DRAFT: "Brouillon",
@@ -20,31 +20,22 @@ const STATE_LABELS = {
   APPROVED: "Approuvée",
 };
 const TABS = [
+  { id: "TO_COMPLETE", label: "À compléter" },
   { id: "TO_SIGN", label: "À signer" },
   { id: "IN_PROGRESS", label: "En cours" },
   { id: "APPROVED", label: "Approuvées" },
   { id: "ALL", label: "Toutes" },
 ];
 
-function isWaitingForCompany(convention) {
-  return (
-    convention.state === "SIGNED_STUDENT" &&
-    convention.currentActorId === getUser()?.userId
-  );
-}
-
-function isInProgress(convention) {
-  return !["SIGNED_STUDENT", "APPROVED"].includes(convention.state);
-}
-
 function waitingFor(convention) {
   if (convention.state === "APPROVED") return "—";
-  if (isWaitingForCompany(convention)) return "Vous";
-  if (String(convention.currentActorId || "").startsWith("RESP#"))
-    return "Responsable";
-  if (convention.state === "SIGNED_COMPANY") return "Responsable";
-  if (convention.state === "SIGNED_STUDENT") return "Entreprise";
-  return "Étudiant";
+  if (convention.currentActorId === convention.companyId) return "Vous";
+  if (convention.currentActorId === convention.studentId) return "l’étudiant";
+  if (String(convention.currentActorId || "").startsWith("RESP#")) {
+    return "le responsable";
+  }
+  if (convention.state === "SIGNED_STUDENT") return "l’entreprise";
+  return "l’étudiant";
 }
 
 function formatDate(value) {
@@ -69,6 +60,29 @@ function ConventionSkeleton() {
           <Skeleton className="company-convention-skeleton-action" />
         </article>
       ))}
+    </div>
+  );
+}
+
+function CompactMeter({ label, count }) {
+  const ratio = count.total
+    ? Math.min(100, Math.round((count.done / count.total) * 100))
+    : 0;
+  return (
+    <div className="company-convention-mini-meter">
+      <span>
+        {label} {count.done}/{count.total}
+      </span>
+      <div
+        className="company-convention-mini-track"
+        role="progressbar"
+        aria-label={`Complétude ${label.toLowerCase()}`}
+        aria-valuemin={0}
+        aria-valuemax={count.total}
+        aria-valuenow={count.done}
+      >
+        <span style={{ width: `${ratio}%` }} />
+      </div>
     </div>
   );
 }
@@ -111,28 +125,49 @@ export default function CompanyConventions() {
   useEffect(() => {
     const refresh = () => retryLoad();
     window.addEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(COMPANY_DATA_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
   }, [retryLoad]);
 
-  const counts = useMemo(
-    () => ({
-      TO_SIGN: items.filter(isWaitingForCompany).length,
-      IN_PROGRESS: items.filter(isInProgress).length,
-      APPROVED: items.filter((item) => item.state === "APPROVED").length,
-      ALL: items.length,
-    }),
+  const actions = useMemo(
+    () =>
+      items.map((item) => ({
+        item,
+        action: getCompanyConventionAction(item, item.companyId),
+        completion: computePartyProgress(item.templateSnapshot, item.values),
+      })),
     [items],
   );
-  const activeTab = selectedTab || (counts.TO_SIGN > 0 ? "TO_SIGN" : "ALL");
+  const counts = useMemo(
+    () => ({
+      TO_COMPLETE: actions.filter((entry) => entry.action === "TO_COMPLETE")
+        .length,
+      TO_SIGN: actions.filter((entry) => entry.action === "TO_SIGN").length,
+      IN_PROGRESS: actions.filter(
+        (entry) => entry.action === "IN_PROGRESS",
+      ).length,
+      APPROVED: actions.filter((entry) => entry.action === "APPROVED").length,
+      ALL: actions.length,
+    }),
+    [actions],
+  );
+  const activeTab =
+    selectedTab ||
+    (counts.TO_COMPLETE > 0
+      ? "TO_COMPLETE"
+      : counts.TO_SIGN > 0
+        ? "TO_SIGN"
+        : "ALL");
   const visibleItems = useMemo(
     () =>
-      items.filter((item) => {
-        if (activeTab === "TO_SIGN") return isWaitingForCompany(item);
-        if (activeTab === "IN_PROGRESS") return isInProgress(item);
-        if (activeTab === "APPROVED") return item.state === "APPROVED";
-        return true;
+      actions.filter((entry) => {
+        if (activeTab === "ALL") return true;
+        return entry.action === activeTab;
       }),
-    [activeTab, items],
+    [actions, activeTab],
   );
 
   return (
@@ -156,6 +191,7 @@ export default function CompanyConventions() {
           <div className="company-convention-stats">
             {[
               ["Total", counts.ALL],
+              ["À compléter", counts.TO_COMPLETE],
               ["À signer", counts.TO_SIGN],
               ["En cours", counts.IN_PROGRESS],
               ["Approuvées", counts.APPROVED],
@@ -185,53 +221,67 @@ export default function CompanyConventions() {
           </div>
           {visibleItems.length ? (
             <div className="company-convention-list">
-              {visibleItems.map((item) => {
-                const toSign = isWaitingForCompany(item);
-                return (
-                  <article
-                    className="company-convention-row"
-                    key={item.conventionId}
-                  >
-                    <div className="company-convention-row-main">
-                      <div className="company-convention-row-heading">
-                        <h2>{item.studentName}</h2>
-                        {toSign && (
-                          <span className="company-convention-sign-marker">
-                            À signer
-                          </span>
-                        )}
-                        <StatusBadge
-                          status={item.state}
-                          label={STATE_LABELS[item.state] || item.state}
-                        />
-                      </div>
-                      <p className="company-convention-offer">
-                        {item.offerTitle}
-                      </p>
-                      <div className="company-convention-meta">
-                        <span>
-                          <MapPin aria-hidden="true" size={14} />
-                          {item.etab || "Établissement non renseigné"}
+              {visibleItems.map(({ item, action, completion }) => (
+                <article
+                  className="company-convention-row"
+                  key={item.conventionId}
+                >
+                  <div className="company-convention-row-main">
+                    <div className="company-convention-row-heading">
+                      <h3>{item.studentName}</h3>
+                      {action === "TO_COMPLETE" && (
+                        <span className="company-convention-complete-marker">
+                          À compléter
                         </span>
-                        <span>
-                          <CalendarDays aria-hidden="true" size={14} />
-                          {formatDate(item.createdAt)}
+                      )}
+                      {action === "TO_SIGN" && (
+                        <span className="company-convention-sign-marker">
+                          À signer
                         </span>
-                        <span>
-                          <FileSignature aria-hidden="true" size={14} />
-                          En attente de : {waitingFor(item)}
-                        </span>
-                      </div>
+                      )}
+                      <StatusBadge
+                        status={item.state}
+                        label={STATE_LABELS[item.state] || item.state}
+                      />
                     </div>
-                    <Link
-                      className="company-convention-view"
-                      to={`/company/conventions/${item.conventionId}`}
-                    >
-                      Voir
-                    </Link>
-                  </article>
-                );
-              })}
+                    <p className="company-convention-offer">{item.offerTitle}</p>
+                    <div className="company-convention-meta">
+                      <span>
+                        <MapPin aria-hidden="true" size={14} />
+                        {item.etabName || "Établissement non renseigné"}
+                      </span>
+                      <span>
+                        <CalendarDays aria-hidden="true" size={14} />
+                        {formatDate(item.createdAt)}
+                      </span>
+                      <span>
+                        <FileSignature aria-hidden="true" size={14} />
+                        En attente de : {waitingFor(item)}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className="company-convention-completion-column"
+                    aria-label="Complétude"
+                  >
+                    <strong>Complétude</strong>
+                    <CompactMeter
+                      label="Étudiant"
+                      count={completion.student}
+                    />
+                    <CompactMeter
+                      label="Entreprise"
+                      count={completion.company}
+                    />
+                  </div>
+                  <Link
+                    className="company-convention-view"
+                    to={`/company/conventions/${item.conventionId}`}
+                  >
+                    Voir
+                  </Link>
+                </article>
+              ))}
             </div>
           ) : (
             <EmptyState

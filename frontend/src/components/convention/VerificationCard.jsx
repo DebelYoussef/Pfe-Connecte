@@ -14,10 +14,11 @@ export default function VerificationCard({ convention, onCopy }) {
     .reverse()
     .find((event) => event.type === "APPROVED");
   const approvedAt = convention.approvedAt || approvedEvent?.timestamp;
+  const documentHash = convention.frozenHash || convention.documentHash;
 
   return (
     <div className="info-card verify-card">
-      <h2>Vérification</h2>
+      <h3>Vérification</h3>
       {convention.state === "APPROVED" ? (
         <>
           <div className="qr-placeholder" aria-label="Code QR de vérification">
@@ -34,6 +35,18 @@ export default function VerificationCard({ convention, onCopy }) {
             </button>
           </div>
           <p>Approuvée le {formatDate(approvedAt)}</p>
+          <div className="verification-hash">
+            <code>{documentHash?.slice(0, 12) || "—"}</code>
+            <button
+              type="button"
+              aria-label="Copier l’empreinte SHA-256"
+              disabled={!documentHash}
+              title={documentHash ? "Copier l’empreinte SHA-256" : "Empreinte indisponible"}
+              onClick={() => onCopy(documentHash, "Empreinte")}
+            >
+              <Copy aria-hidden="true" size={14} />
+            </button>
+          </div>
           <Link to={`/verify/${convention.conventionId}`}>
             Ouvrir la page de vérification
           </Link>

@@ -17,14 +17,26 @@ function formatDate(value) {
 
 function getEventTitle(event) {
   if (event.type === "SUBMITTED") return "Convention transmise";
+  if (event.type === "FIELDS_UPDATED") {
+    const party =
+      event.actorRole === "ENT" ? "L’entreprise" : "L’étudiant";
+    const count = event.count || 0;
+    return `${party} a mis à jour sa partie (${count} champ${count === 1 ? "" : "s"})`;
+  }
   if (event.type === "SIGNED") {
     return `Convention signée par ${ROLE_LABELS[event.actorRole] ?? event.actorRole}`;
   }
   if (event.type === "APPROVED") return "Convention approuvée";
+  if (event.type === "CORRECTED") return "Convention corrigée par le responsable";
+  if (event.type === "RESUBMITTED") return "Convention renvoyée pour signature";
   if (event.type === "REJECTED") {
     return `Convention refusée par ${ROLE_LABELS[event.actorRole] ?? event.actorRole}`;
   }
-  if (event.type === "MODIFIED") return "Informations modifiées par l’étudiant";
+  if (event.type === "MODIFIED") {
+    if (event.actorRole === "RESP") return "Convention corrigée par le responsable";
+    if (event.actorRole === "ENT") return "Modification demandée par l’entreprise";
+    return "Modification demandée par l’étudiant";
+  }
   return event.message || "Événement de convention";
 }
 
@@ -51,10 +63,33 @@ export default function ConventionTimeline({
           <span />
           <div>
             <strong>{getEventTitle(event)}</strong>
-            {event.type === "MODIFIED" && (
+            {event.type === "MODIFIED" && event.oldHash && (
               <small className="modified-hashes">
-                Empreinte précédente <code>{event.oldHash}</code> · nouvelle{" "}
-                <code>{event.newHash}</code>
+                Empreinte précédente{" "}
+                <code>{event.oldHash.slice(0, 12)}</code>
+                {event.newHash && (
+                  <>
+                    {" "}· nouvelle <code>{event.newHash.slice(0, 12)}</code>
+                  </>
+                )}
+              </small>
+            )}
+            {["SIGNED", "APPROVED"].includes(event.type) && event.hash && (
+              <small className="modified-hashes">
+                {event.type === "APPROVED"
+                  ? "Empreinte d’approbation"
+                  : "Empreinte signée"}{" "}
+                <code>{event.hash.slice(0, 12)}</code>
+              </small>
+            )}
+            {event.type === "CORRECTED" && event.hash && (
+              <small className="modified-hashes">
+                Nouvelle empreinte <code>{event.hash.slice(0, 12)}</code>
+              </small>
+            )}
+            {event.type === "REJECTED" && event.hash && (
+              <small className="modified-hashes">
+                Empreinte au refus <code>{event.hash.slice(0, 12)}</code>
               </small>
             )}
             {event.invalidated && (

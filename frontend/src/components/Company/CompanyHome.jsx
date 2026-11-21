@@ -23,6 +23,10 @@ import {
   listMyOffers,
   listReportsForReview,
 } from "../../services.company";
+import {
+  countCompanyConventionActions,
+  getCompanyConventionAction,
+} from "../../lib/conventionDocument";
 
 const notificationRoutes = {
   APPLICATION: (id) => `/company/candidatures?offer=${encodeURIComponent(id)}`,
@@ -133,12 +137,13 @@ export default function CompanyHome() {
 
   const derived = useMemo(() => {
     if (!data) return null;
-    const companyId = user.userId;
     const pendingApplications = data.applications.filter((application) =>
       ["PENDING", "VIEWED"].includes(application.status),
     );
-    const conventionsToSign = data.conventions.filter(
-      (convention) => convention.currentActorId === companyId,
+    const conventionActions = data.conventions.filter((convention) =>
+      ["TO_COMPLETE", "TO_SIGN"].includes(
+        getCompanyConventionAction(convention, convention.companyId),
+      ),
     );
     const reportsToReview = data.reports.filter((report) => !report.companyDecision);
     const journalsToReview = data.journals.filter((journal) => !journal.validated);
@@ -146,7 +151,11 @@ export default function CompanyHome() {
     return {
       openOffers: data.offers.filter((offer) => offer.status === "OPEN"),
       pendingApplications,
-      conventionsToSign,
+      conventionActions,
+      conventionActionCount: countCompanyConventionActions(
+        data.conventions,
+        data.conventions[0]?.companyId,
+      ),
       reportsToReview,
       journalsToReview,
       lateWeeks,
@@ -157,14 +166,14 @@ export default function CompanyHome() {
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 5),
     };
-  }, [data, user.userId]);
+  }, [data]);
 
   const retry = () => setAttempt((value) => value + 1);
   const statCards = derived
     ? [
         { label: "Offres ouvertes", value: derived.openOffers.length, to: "/company/offres", icon: BriefcaseBusiness },
         { label: "Candidatures à traiter", value: derived.pendingApplications.length, to: "/company/candidatures", icon: FileCheck2 },
-        { label: "Conventions à signer", value: derived.conventionsToSign.length, to: "/company/conventions", icon: FileSignature },
+        { label: "Conventions à traiter", value: derived.conventionActionCount, to: "/company/conventions", icon: FileSignature },
         { label: "Rapports à examiner", value: derived.reportsToReview.length, to: "/company/rapports", icon: FileText },
       ]
     : [];
@@ -249,12 +258,12 @@ export default function CompanyHome() {
             )}
           </DashboardSection>
 
-          <DashboardSection title="Conventions à signer" to="/company/conventions">
+          <DashboardSection title="Conventions à traiter" to="/company/conventions">
             {loading ? (
               <LoadingRows count={2} />
-            ) : error ? null : derived?.conventionsToSign.length ? (
+            ) : error ? null : derived?.conventionActions.length ? (
               <ul className="company-dashboard-list">
-                {derived.conventionsToSign.map((convention) => (
+                {derived.conventionActions.map((convention) => (
                   <li key={convention.conventionId}>
                     <div className="company-dashboard-list-link">
                       <span className="company-student-avatar">{initials(convention.studentName)}</span>
@@ -274,8 +283,8 @@ export default function CompanyHome() {
               </ul>
             ) : (
               <EmptyState
-                title="Aucune convention à signer"
-                message="Les conventions en attente de votre signature apparaîtront ici."
+                title="Aucune convention à traiter"
+                message="Les conventions à compléter ou à signer apparaîtront ici."
                 actionLabel="Voir les candidatures"
                 actionTo="/company/candidatures"
               />
@@ -294,7 +303,7 @@ export default function CompanyHome() {
             ) : error ? null : (
               <ul className="company-task-list">
                 <li><Link to="/company/candidatures"><FileCheck2 size={17} aria-hidden="true" /><span>Candidatures</span><strong>{derived?.pendingApplications.length ?? 0}</strong></Link></li>
-                <li><Link to="/company/conventions"><FileSignature size={17} aria-hidden="true" /><span>Conventions</span><strong>{derived?.conventionsToSign.length ?? 0}</strong></Link></li>
+                <li><Link to="/company/conventions"><FileSignature size={17} aria-hidden="true" /><span>Conventions</span><strong>{derived?.conventionActionCount ?? 0}</strong></Link></li>
                 <li><Link to="/company/journaux"><BookOpen size={17} aria-hidden="true" /><span>Journaux</span><strong>{(derived?.journalsToReview.length ?? 0) + (derived?.lateWeeks.length ?? 0)}</strong></Link></li>
                 <li><Link to="/company/rapports"><FileText size={17} aria-hidden="true" /><span>Rapports</span><strong>{derived?.reportsToReview.length ?? 0}</strong></Link></li>
               </ul>

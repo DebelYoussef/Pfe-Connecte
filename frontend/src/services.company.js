@@ -1,5 +1,15 @@
 import { getToken, getUser, saveSession } from "./auth";
 import { api } from "./api";
+import {
+  getCompanyConventionActionCount,
+  getConvention as getMockConvention,
+  getConventions as listMockConventions,
+  rejectConvention as rejectMockConvention,
+  requestModification,
+  saveFields,
+  signConvention as signMockConvention,
+  toConventionView,
+} from "./mock/conventionStore";
 
 export const REAL = {
   me: true,
@@ -294,7 +304,6 @@ function createEvent(conventionId, type, actorId, actorRole, fromState, toState,
 function makeConvention({ id, app, companyId, state, days, modified = false }) {
   const conventionId = ID(id);
   const student = STUDENTS[Number(app.studentId.slice(-1)) - 1];
-  const offer = OFFER_SEEDS.find((_, index) => ID(100 + index) === app.offerId);
   const createdAt = daysAgo(days);
   const studentActorId = app.studentId;
   const events = [
@@ -319,7 +328,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SUBMITTED",
         "SIGNED_STUDENT",
         daysAgo(days - 1),
-        { pdfSha256: "a".repeat(64) },
       ),
     );
   } else if (state === "APPROVED") {
@@ -332,7 +340,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SUBMITTED",
         "SIGNED_STUDENT",
         daysAgo(days - 1),
-        { pdfSha256: "b".repeat(64) },
       ),
       createEvent(
         conventionId,
@@ -342,7 +349,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SIGNED_STUDENT",
         "SIGNED_COMPANY",
         daysAgo(days - 1.5),
-        { pdfSha256: "b".repeat(64) },
       ),
       createEvent(
         conventionId,
@@ -352,7 +358,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SIGNED_COMPANY",
         "APPROVED",
         daysAgo(days - 2),
-        { pdfSha256: "c".repeat(64) },
       ),
     );
   } else if (modified) {
@@ -377,9 +382,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
     offerId: app.offerId,
     etab: student.etab,
     state,
-    renderedText: `Convention de stage — ${student.firstName} ${student.lastName}\nOffre : ${offer?.title || "Stage de fin d’études"}`,
-    templateVersion: 1,
-    pdfSha256: "a".repeat(64),
     shortRef: `PFE-${String(id).padStart(4, "0")}`,
     ...(state === "SIGNED_STUDENT"
       ? { currentActorId: companyId, stepSince: daysAgo(days - 1) }
@@ -392,7 +394,7 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
           stepSince: daysAgo(days - 1),
         }
       : {}),
-    ...(state === "APPROVED" ? { finalSha256: "c".repeat(64), approvedAt: daysAgo(days - 2) } : {}),
+    ...(state === "APPROVED" ? { approvedAt: daysAgo(days - 2) } : {}),
     createdAt,
     events,
   };
@@ -713,15 +715,6 @@ function enrichApplication(store, application) {
     // NOT IN API YET: these values are joined from the mocked student and offer records.
     studentName: studentName(store, application.studentId),
     offerTitle: offerFor(store, application.offerId)?.title || "Offre indisponible",
-  };
-}
-
-function enrichConvention(store, convention) {
-  return {
-    ...convention,
-    // NOT IN API YET: these values are joined for company-facing list rows.
-    studentName: studentName(store, convention.studentId),
-    offerTitle: offerFor(store, convention.offerId)?.title || "Offre indisponible",
   };
 }
 
@@ -1159,8 +1152,8 @@ export async function listCompanyApplications({
 }
 
 export async function listMyConventions({ state, limit = 100, cursor = null } = {}) {
-  const companyId = currentCompanyId();
   if (REAL.conventions) {
+    const companyId = currentCompanyId();
     const query = new URLSearchParams();
     if (state) query.set("state", state);
     if (limit) query.set("limit", String(limit));
@@ -1173,11 +1166,10 @@ export async function listMyConventions({ state, limit = 100, cursor = null } = 
       nextCursor: result.nextCursor ?? null,
     };
   }
-  const store = storeFor(companyId);
-  const items = store.conventions
-    .filter((convention) => convention.companyId === companyId && (!state || convention.state === state))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((convention) => enrichConvention(store, convention));
+  const items = (await listMockConventions())
+    .filter((convention) => !state || convention.state === state)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .map(toConventionView);
   return wait(page(items, limit, cursor));
 }
 
@@ -1185,25 +1177,9 @@ export async function listConventions(options = {}) {
   return listMyConventions(options);
 }
 
-function findCompanyConvention(store, companyId, conventionId) {
-  const convention = store.conventions.find(
-    (item) => item.conventionId === conventionId,
-  );
-  if (convention && convention.companyId !== companyId)
-    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
-  if (convention) return convention;
-
-  const belongsToAnotherCompany = [...stores.values()].some((otherStore) =>
-    otherStore.conventions.some((item) => item.conventionId === conventionId),
-  );
-  if (belongsToAnotherCompany)
-    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
-  throw fail(404, "NOT_FOUND", "Cette convention n’existe pas.");
-}
-
 export async function getConvention(conventionId) {
-  const companyId = currentCompanyId();
   if (REAL.conventions) {
+    const companyId = currentCompanyId();
     const convention = await api(
       `/v1/conventions/${encodeURIComponent(conventionId)}`,
     );
@@ -1211,13 +1187,24 @@ export async function getConvention(conventionId) {
       throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
     return convention;
   }
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  return wait(copy(enrichConvention(store, convention)));
+  return wait(toConventionView(await getMockConvention(conventionId)));
+}
+
+// NOT IN API YET: convention field updates are stored in the shared browser mock.
+export async function saveCompanyConventionFields(conventionId, values) {
+  const updated = await saveFields(conventionId, values);
+  notifyCompanyDataChanged();
+  return wait(toConventionView(updated));
+}
+
+// NOT IN API YET: convention modification requests are stored in the shared browser mock.
+export async function requestCompanyConventionModification(conventionId) {
+  const updated = await requestModification(conventionId);
+  notifyCompanyDataChanged();
+  return wait(toConventionView(updated));
 }
 
 export async function signConvention(conventionId) {
-  const companyId = currentCompanyId();
   if (REAL.conventions) {
     const updated = await api(
       `/v1/conventions/${encodeURIComponent(conventionId)}/sign`,
@@ -1226,37 +1213,12 @@ export async function signConvention(conventionId) {
     notifyCompanyDataChanged();
     return updated;
   }
-
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  if (
-    convention.state !== "SIGNED_STUDENT" ||
-    convention.currentActorId !== companyId
-  )
-    throw fail(409, "CONFLICT", "La convention n’attend pas votre signature.");
-
-  const timestamp = new Date().toISOString();
-  convention.state = "SIGNED_COMPANY";
-  convention.currentActorId = `RESP#${convention.etab}`;
-  convention.stepSince = timestamp;
-  convention.events.push(
-    createEvent(
-      convention.conventionId,
-      "SIGNED",
-      companyId,
-      "ENT",
-      "SIGNED_STUDENT",
-      "SIGNED_COMPANY",
-      timestamp,
-      { pdfSha256: convention.pdfSha256 },
-    ),
-  );
+  const updated = await signMockConvention(conventionId);
   notifyCompanyDataChanged();
-  return wait(copy(enrichConvention(store, convention)));
+  return wait(toConventionView(updated));
 }
 
 export async function rejectConvention(conventionId, { reason } = {}) {
-  const companyId = currentCompanyId();
   const normalizedReason = String(reason ?? "").trim();
   if (!normalizedReason || normalizedReason.length > 1000)
     throw fail(
@@ -1273,36 +1235,11 @@ export async function rejectConvention(conventionId, { reason } = {}) {
     notifyCompanyDataChanged();
     return updated;
   }
-
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY"].includes(convention.state))
-    throw fail(409, "CONFLICT", "Cette convention ne peut plus être refusée.");
-
-  const previousState = convention.state;
-  const timestamp = new Date().toISOString();
-  // NOT IN API YET: signature invalidation is represented on events for the mock timeline.
-  convention.events = convention.events.map((event) =>
-    event.type === "SIGNED" ? { ...event, invalidated: true } : event,
-  );
-  convention.state = "DRAFT";
-  convention.currentActorId = `RESP#${convention.etab}`;
-  convention.stepSince = timestamp;
-  convention.rejectionReason = normalizedReason;
-  convention.events.push(
-    createEvent(
-      convention.conventionId,
-      "REJECTED",
-      companyId,
-      "ENT",
-      previousState,
-      "DRAFT",
-      timestamp,
-      { reason: normalizedReason },
-    ),
-  );
+  const updated = await rejectMockConvention(conventionId, {
+    reason: normalizedReason,
+  });
   notifyCompanyDataChanged();
-  return wait(copy(enrichConvention(store, convention)));
+  return wait(toConventionView(updated));
 }
 
 function createPdfDataUrl(lines) {
@@ -1350,19 +1287,18 @@ function createPdfDataUrl(lines) {
 }
 
 export async function getConventionPdfUrl(conventionId) {
-  const companyId = currentCompanyId();
-  if (REAL.conventions)
+  if (REAL.conventions) {
+    currentCompanyId();
     return api(
       `/v1/conventions/${encodeURIComponent(conventionId)}/pdf-url`,
     );
-
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
+  }
+  const convention = await getConvention(conventionId);
   const url = createPdfDataUrl([
-    "CONVENTION DE STAGE",
+    "CONVENTION DE STAGE PFE",
     convention.shortRef,
     ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 4),
-    `Empreinte : ${convention.pdfSha256}`,
+    `Empreinte : ${convention.frozenHash || convention.documentHash || ""}`,
   ]);
   return wait({
     url,
@@ -1371,79 +1307,28 @@ export async function getConventionPdfUrl(conventionId) {
 }
 
 export async function simulateConventionApproval(conventionId) {
-  const companyId = currentCompanyId();
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  if (
-    convention.state !== "SIGNED_COMPANY" ||
-    convention.currentActorId !== `RESP#${convention.etab}`
-  )
-    throw fail(409, "CONFLICT", "La convention n’attend pas l’approbation du responsable.");
-
-  const timestamp = new Date().toISOString();
-  convention.state = "APPROVED";
-  convention.finalSha256 = "c".repeat(64);
-  convention.approvedAt = timestamp;
-  delete convention.currentActorId;
-  delete convention.stepSince;
-  convention.events.push(
-    createEvent(
-      convention.conventionId,
-      "APPROVED",
-      `RESP#${convention.etab}`,
-      "RESP",
-      "SIGNED_COMPANY",
-      "APPROVED",
-      timestamp,
-      { pdfSha256: convention.finalSha256 },
-    ),
-  );
-  notifyCompanyDataChanged();
-  return wait(copy(enrichConvention(store, convention)));
+  const convention = await getConvention(conventionId);
+  if (convention.state !== "APPROVED") {
+    throw fail(
+      409,
+      "NOT_YOUR_TURN",
+      "L’approbation doit être signée depuis l’espace responsable.",
+    );
+  }
+  return convention;
 }
 
 export async function simulateStudentConventionModification(
   conventionId,
   renderedText,
 ) {
-  const companyId = currentCompanyId();
-  const store = storeFor(companyId);
-  const convention = findCompanyConvention(store, companyId, conventionId);
-  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY", "APPROVED"].includes(convention.state))
-    throw fail(409, "CONFLICT", "Cette convention ne peut pas être modifiée à cette étape.");
-
-  const oldHash = convention.pdfSha256;
-  const newText =
-    String(renderedText ?? convention.renderedText).trim() || convention.renderedText;
-  const newHash = `${oldHash.slice(0, 62)}${oldHash.slice(-2) === "ff" ? "00" : "ff"}`;
-  const previousState = convention.state;
-  const timestamp = new Date().toISOString();
-  convention.events = convention.events.map((event) =>
-    event.type === "SIGNED" ? { ...event, invalidated: true } : event,
-  );
-  convention.renderedText = newText;
-  convention.pdfSha256 = newHash;
-  convention.state = "DRAFT";
-  convention.currentActorId = `RESP#${convention.etab}`;
-  convention.stepSince = timestamp;
-  delete convention.finalSha256;
-  delete convention.approvedAt;
-  delete convention.rejectionReason;
-  convention.events.push(
-    // NOT IN API YET: MODIFIED events and their old/new hash metadata are mock-only.
-    createEvent(
-      convention.conventionId,
-      "MODIFIED",
-      convention.studentId,
-      "ETU",
-      previousState,
-      "DRAFT",
-      timestamp,
-      { oldHash, newHash },
-    ),
+  void renderedText;
+  const updated = await requestModification(
+    conventionId,
+    "Modification demandée depuis l’espace entreprise.",
   );
   notifyCompanyDataChanged();
-  return wait(copy(enrichConvention(store, convention)));
+  return wait(toConventionView(updated));
 }
 
 export async function listMyReports({ status, limit = 100, cursor = null } = {}) {
@@ -1770,15 +1655,10 @@ export function getCompanyApplicationsToProcessCount() {
 }
 
 export function getCompanyConventionsToSignCount() {
-  const store = optionalStore();
-  const companyId = getUser()?.userId;
-  return (
-    store?.conventions.filter(
-      (convention) =>
-        convention.companyId === companyId &&
-        convention.state === "SIGNED_STUDENT" &&
-        convention.currentActorId === companyId,
-    ).length || 0
+  const user = getUser();
+  // NOT IN API YET: demo company accounts share the C1 convention identity.
+  return getCompanyConventionActionCount(
+    user?.role === "ENT" ? "C1" : user?.userId,
   );
 }
 
