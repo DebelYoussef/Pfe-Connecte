@@ -1,5 +1,6 @@
 import { Download, Lock, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import ErrorBanner from '../../components/ErrorBanner'
 import PageHeader from '../../components/ui/PageHeader'
 import LockedPage from '../../components/LockedPage'
 import StatusBadge from '../../components/ui/StatusBadge'
@@ -200,13 +201,19 @@ export default function Convention() {
       ) : convention.state === 'DRAFT' && convention.rejectionReason ? (
         <div className="convention-rejected" role="alert"><strong>Convention refusée</strong><span>{convention.rejectionReason}</span><small>Le responsable corrige le texte, vous serez notifié lorsqu’elle sera renvoyée.</small></div>
       ) : null}
-      {error && <div className="convention-error" role="alert">{error}</div>}
+      {error && (
+        <ErrorBanner
+          title="Impossible de charger ou d’enregistrer la convention"
+          message={error}
+          onRetry={() => window.location.reload()}
+        />
+      )}
       <ConventionTracker doneSteps={trackerDone} />
       <div className="convention-grid">
         <div className="convention-main-column">
           <section className="info-card convention-student-info">
             <div className="convention-section-heading">
-              <div><h2>Mes informations</h2><p>Complétez la partie étudiant de votre convention.</p></div>
+              <div><h3>Mes informations</h3><p>Complétez la partie étudiant de votre convention.</p></div>
               {hasSignature && !informationEditable && <Lock aria-label="Informations verrouillées" size={18} />}
             </div>
             {hasSignature && !informationEditable && (
@@ -258,14 +265,14 @@ export default function Convention() {
         </div>
         <aside className="convention-aside">
           <div className="info-card">
-            <h2>Informations</h2>
+            <h3>Informations</h3>
             <p><strong>Entreprise</strong>{convention.companyName}</p>
             <p><strong>Offre</strong>{convention.offerTitle}</p>
-            <p><strong>Établissement</strong>{convention.etab}</p>
+            <p><strong>Établissement</strong>{convention.etabName || etabName(convention.etab)}</p>
             <p><strong>Créée le</strong>{formatDate(convention.createdAt)}</p>
           </div>
           <div className="info-card convention-history">
-            <h2>Historique</h2>
+            <h3>Historique</h3>
             <ConventionTimeline events={events} />
           </div>
           <VerificationCard convention={convention} onCopy={copyValue} />

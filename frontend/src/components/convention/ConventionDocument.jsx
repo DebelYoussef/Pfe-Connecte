@@ -40,10 +40,11 @@ export default function ConventionDocument({
   );
   const canRevealSensitive = SIGNATORY_ROLES.has(getUser()?.role);
   const signatures = convention?.signatures || [];
+  const hasIntegrityHash = Boolean(convention?.frozenHash || convention?.documentHash);
 
   useEffect(() => {
+    if (!hasIntegrityHash) return undefined;
     let active = true;
-    setIntegrity("checking");
     verifyIntegrity(convention)
       .then((valid) => {
         if (active) setIntegrity(valid ? "verified" : "modified");
@@ -54,7 +55,7 @@ export default function ConventionDocument({
     return () => {
       active = false;
     };
-  }, [convention]);
+  }, [convention, hasIntegrityHash]);
 
   function revealSensitive(field) {
     onRevealSensitive?.(field.key, field);
@@ -154,6 +155,7 @@ export default function ConventionDocument({
                     ]
                       .filter(Boolean)
                       .join(" ")}
+                    data-source={field.source}
                     key={field.key}
                   >
                     <dt>{field.label}</dt>
@@ -240,15 +242,17 @@ export default function ConventionDocument({
         <span className="paper-legend-company">Champ à compléter par l’entreprise</span>
       </div>
 
-      <p className={`integrity-line ${integrity}`} role="status">
-        {integrity === "verified"
-          ? "Intégrité vérifiée"
-          : integrity === "modified"
-            ? "Le document a été modifié depuis la signature"
-            : integrity === "error"
-              ? "Vérification de l’intégrité indisponible."
-              : "Vérification de l’intégrité…"}
-      </p>
+      {hasIntegrityHash && (
+        <p className={`integrity-line ${integrity}`} role="status">
+          {integrity === "verified"
+            ? "Intégrité vérifiée"
+            : integrity === "modified"
+              ? "Le document a été modifié depuis la signature"
+              : integrity === "error"
+                ? "Vérification de l’intégrité indisponible."
+                : "Vérification de l’intégrité…"}
+        </p>
+      )}
     </article>
   );
 }

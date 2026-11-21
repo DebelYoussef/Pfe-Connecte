@@ -336,7 +336,7 @@ export default function CompanyConvention() {
         </div>
         <aside className="convention-aside">
           <div className="info-card">
-            <h2>Informations</h2>
+            <h3>Informations</h3>
             <p>
               <strong>Étudiant</strong>
               {convention.studentName}
@@ -365,7 +365,7 @@ export default function CompanyConvention() {
             </p>
           </div>
           <div className="info-card convention-history">
-            <h2>Historique</h2>
+            <h3>Historique</h3>
             <ConventionTimeline
               events={events}
               showRejectionReason

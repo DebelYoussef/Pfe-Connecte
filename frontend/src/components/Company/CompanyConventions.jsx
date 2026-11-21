@@ -194,7 +194,7 @@ export default function CompanyConventions() {
                   >
                     <div className="company-convention-row-main">
                       <div className="company-convention-row-heading">
-                        <h2>{item.studentName}</h2>
+                        <h3>{item.studentName}</h3>
                         {toSign && (
                           <span className="company-convention-sign-marker">
                             À signer

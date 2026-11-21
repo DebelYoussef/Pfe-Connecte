@@ -4,7 +4,6 @@ import {
   getMe as getRealMe,
   updateMe as updateRealMe,
 } from "./services";
-import { api } from "./api";
 import {
   assignConventionSupervisor,
   correctConvention as correctStoredConvention,
@@ -13,6 +12,7 @@ import {
   getConventionTemplate as getStoredTemplate,
   putConventionTemplate as putStoredTemplate,
   rejectConvention as rejectStoredConvention,
+  restoreDefaultTemplate as restoreStoredDefaultTemplate,
   resubmitConvention as resubmitStoredConvention,
   signConvention as signStoredConvention,
   toConventionView,
@@ -41,12 +41,6 @@ function daysAgo(amount, hour = 12) {
   const date = new Date();
   date.setDate(date.getDate() - amount);
   date.setHours(hour, 0, 0, 0);
-  return date.toISOString();
-}
-
-function daysAhead(amount) {
-  const date = new Date();
-  date.setDate(date.getDate() + amount);
   return date.toISOString();
 }
 
@@ -119,7 +113,7 @@ function mergeResponsableProfileExtras(profile, partial = {}) {
 
 export async function getMeResponsable() {
   if (REAL.me) return getRealMe();
-  return wait({ ...user, etab: institution() });
+  return wait({ ...getUser(), etab: institution() });
 }
 
 export async function updateMeResponsable(partial) {
@@ -180,9 +174,12 @@ export async function getConvention(conventionId) {
 
 export async function listNotifications({ limit = 100, cursor } = {}) {
   const safeLimit = Number(limit) > 0 ? Number(limit) : 100;
+  const start = cursor ? Math.max(0, Number(cursor) || 0) : 0;
+  const page = notifications.slice(start, start + safeLimit);
+  const nextIndex = start + safeLimit;
   return wait({
-    items: notifications.slice(0, safeLimit),
-    nextCursor: undefined,
+    items: page,
+    nextCursor: nextIndex < notifications.length ? String(nextIndex) : undefined,
   });
 }
 
@@ -314,6 +311,21 @@ export async function getConventionTemplate() {
     text,
     createdAt: template.createdAt,
   });
+}
+
+// NOT IN API YET: structured templates are stored in the shared local mock store.
+export async function getStructuredConventionTemplate() {
+  return wait(await getStoredTemplate());
+}
+
+export async function getDefaultStructuredConventionTemplate() {
+  return wait(await restoreStoredDefaultTemplate());
+}
+
+export async function putStructuredConventionTemplate(template) {
+  const updated = await putStoredTemplate(template);
+  window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
+  return wait(updated);
 }
 
 export async function putConventionTemplate({ text } = {}) {

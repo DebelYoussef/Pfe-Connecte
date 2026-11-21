@@ -14,7 +14,11 @@ export default function VerificationCard({ convention, onCopy }) {
     .reverse()
     .find((event) => event.type === "APPROVED");
   const approvedAt = convention.approvedAt || approvedEvent?.timestamp;
-  const documentHash = convention.documentHash || convention.pdfSha256;
+  const documentHash =
+    convention.frozenHash ||
+    convention.documentHash ||
+    convention.finalSha256 ||
+    convention.pdfSha256;
 
   return (
     <div className="info-card verify-card">

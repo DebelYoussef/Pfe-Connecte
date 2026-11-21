@@ -724,15 +724,6 @@ function enrichApplication(store, application) {
   };
 }
 
-function enrichConvention(store, convention) {
-  return {
-    ...convention,
-    // NOT IN API YET: these values are joined for company-facing list rows.
-    studentName: studentName(store, convention.studentId),
-    offerTitle: offerFor(store, convention.offerId)?.title || "Offre indisponible",
-  };
-}
-
 function enrichReport(store, report) {
   const intern = store.interns.find((item) => item.studentId === report.studentId);
   const convention = intern
@@ -1192,22 +1183,6 @@ export async function listConventions(options = {}) {
   return listMyConventions(options);
 }
 
-function findCompanyConvention(store, companyId, conventionId) {
-  const convention = store.conventions.find(
-    (item) => item.conventionId === conventionId,
-  );
-  if (convention && convention.companyId !== companyId)
-    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
-  if (convention) return convention;
-
-  const belongsToAnotherCompany = [...stores.values()].some((otherStore) =>
-    otherStore.conventions.some((item) => item.conventionId === conventionId),
-  );
-  if (belongsToAnotherCompany)
-    throw fail(403, "FORBIDDEN", "Vous ne pouvez pas consulter cette convention.");
-  throw fail(404, "NOT_FOUND", "Cette convention n’existe pas.");
-}
-
 export async function getConvention(conventionId) {
   if (REAL.conventions) {
     const companyId = currentCompanyId();
@@ -1337,8 +1312,9 @@ export async function simulateConventionApproval(conventionId) {
 
 export async function simulateStudentConventionModification(
   conventionId,
-  _renderedText,
+  renderedText,
 ) {
+  void renderedText;
   const updated = await requestModification(
     conventionId,
     "Modification demandée depuis l’espace entreprise.",

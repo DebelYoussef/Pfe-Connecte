@@ -583,10 +583,6 @@ async function resetScenarioInStore(store, scenarioName) {
       fields: ["scenarioName"],
     });
   }
-  store.templates = {
-    ETAB1: defaultTemplate("ETAB1"),
-    ETAB2: defaultTemplate("ETAB2"),
-  };
   store.conventions = [];
   if (scenarioName === "new") return;
 
@@ -1188,7 +1184,7 @@ export async function verifyIntegrity(convention) {
 }
 
 export async function resetMockConventions(scenarioName = "fill") {
-  const store = newStore();
+  const store = await readStore();
   await resetScenarioInStore(store, scenarioName);
   await writeStore(store);
   return clone(store);

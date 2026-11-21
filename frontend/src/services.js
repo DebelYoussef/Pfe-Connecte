@@ -9,7 +9,7 @@ import {
   signConvention as signMockConvention,
   toConventionView,
 } from "./mock/conventionStore";
-import { sha256Hex } from "./lib/conventionDocument";
+import { sha256Hex as sha256TextHex } from "./lib/conventionDocument";
 
 // REAL/MOCK SWITCH. true = real API (src/api.js), false = the previous mock, per group.
 // Flip one group back to false if something breaks. Edit it here: the mock state below is built
@@ -36,9 +36,6 @@ const baseApplication = {
   createdAt: "2026-11-06",
   updatedAt: "2026-11-07",
 };
-// NOT IN API YET: studentAddress and studentPhone are mock convention form fields.
-const conventionInfoTemplate =
-  "Étudiant : {{studentName}}\nAdresse : {{studentAddress}}\nTéléphone : {{studentPhone}}\nE-mail : {{studentEmail}}\nÉtablissement : {{etab}}\nDépartement : {{department}}\nSpécialité : {{specialty}}\n\nEntreprise : {{companyName}}\nOffre : {{offerTitle}}";
 const scenarios = {
   new: {
     activeCount: 0,
@@ -407,7 +404,7 @@ async function mockActOnApplication(id, action) {
   return wait(mockApplications.find((item) => item.offerId === id));
 }
 export async function getConventionTextHash(text) {
-  return sha256Hex(text);
+  return sha256TextHex(text);
 }
 export async function getMyConvention() {
   const conventions = await listMockConventions();
