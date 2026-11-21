@@ -64,28 +64,7 @@ const scenarios = {
   signing: {
     activeCount: 1,
     applications: [{ ...baseApplication, status: "CONFIRMED" }],
-    convention: {
-      conventionId: "conv-1",
-      state: "SUBMITTED",
-      companyName: "Atelier Digital",
-      offerTitle: "Développeur Front-end React",
-      etab: "Institut A",
-      renderedText:
-        "Entre les soussignés, l’entreprise Atelier Digital et l’étudiant, il est convenu ce qui suit pour la réalisation du stage de fin d’études.",
-      templateVersion: 3,
-      pdfSha256: "a82f7e9d20c14b77f1a",
-      shortRef: "PFE-2026-0042",
-      currentActorId: "stu-1",
-      createdAt: "2026-11-06",
-      events: [
-        {
-          timestamp: "2026-11-06T10:00:00Z",
-          type: "SUBMITTED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-      ],
-    },
+    convention: null,
     supervision: null,
     journals: [],
     report: null,
@@ -93,35 +72,7 @@ const scenarios = {
   draft: {
     activeCount: 1,
     applications: [{ ...baseApplication, status: "CONFIRMED" }],
-    convention: {
-      conventionId: "conv-1",
-      state: "DRAFT",
-      companyName: "Atelier Digital",
-      offerTitle: "Développeur Front-end React",
-      etab: "Institut A",
-      renderedText: "Convention en cours de correction.",
-      templateVersion: 3,
-      pdfSha256: "a82f7e9d20c14b77f1a",
-      shortRef: "PFE-2026-0042",
-      currentActorId: "RESP#1",
-      rejectionReason: "Le responsable doit corriger une information.",
-      createdAt: "2026-11-06",
-      events: [
-        {
-          timestamp: "2026-11-06T10:00:00Z",
-          type: "SUBMITTED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-07T10:00:00Z",
-          type: "REJECTED",
-          actorRole: "RESP",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-          reason: "Le responsable doit corriger une information.",
-        },
-      ],
-    },
+    convention: null,
     supervision: null,
     journals: [],
     report: null,
@@ -129,41 +80,7 @@ const scenarios = {
   approved: {
     activeCount: 1,
     applications: [{ ...baseApplication, status: "CONFIRMED" }],
-    convention: {
-      conventionId: "conv-1",
-      state: "APPROVED",
-      companyName: "Atelier Digital",
-      offerTitle: "Développeur Front-end React",
-      etab: "Institut A",
-      renderedText:
-        "La présente convention encadre le stage de fin d’études de l’étudiant.",
-      templateVersion: 3,
-      pdfSha256: "a82f7e9d20c14b77f1a",
-      shortRef: "PFE-2026-0042",
-      currentActorId: "RESP#1",
-      createdAt: "2026-11-06",
-      approvedAt: "2026-11-09",
-      events: [
-        {
-          timestamp: "2026-11-06T10:00:00Z",
-          type: "SUBMITTED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-07T10:00:00Z",
-          type: "SIGNED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-09T10:00:00Z",
-          type: "APPROVED",
-          actorRole: "RESP",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-      ],
-    },
+    convention: null,
     supervision: null,
     journals: [],
     report: null,
@@ -171,52 +88,7 @@ const scenarios = {
   supervised: {
     activeCount: 1,
     applications: [{ ...baseApplication, status: "CONFIRMED" }],
-    convention: {
-      conventionId: "conv-1",
-      state: "APPROVED",
-      companyName: "Atelier Digital",
-      offerTitle: "Développeur Front-end React",
-      etab: "Institut A",
-      renderedText: "La présente convention encadre le stage de fin d’études.",
-      templateVersion: 3,
-      pdfSha256: "a82f7e9d20c14b77f1a",
-      shortRef: "PFE-2026-0042",
-      currentActorId: "RESP#1",
-      createdAt: "2026-11-06",
-      approvedAt: "2026-11-09",
-      events: [
-        {
-          timestamp: "2026-11-06T10:00:00Z",
-          type: "SUBMITTED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-07T10:00:00Z",
-          type: "SIGNED",
-          actorRole: "ETU",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-08T10:00:00Z",
-          type: "SIGNED",
-          actorRole: "ENT",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-09T09:00:00Z",
-          type: "SIGNED",
-          actorRole: "RESP",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-        {
-          timestamp: "2026-11-09T10:00:00Z",
-          type: "APPROVED",
-          actorRole: "RESP",
-          pdfSha256: "a82f7e9d20c14b77f1a",
-        },
-      ],
-    },
+    convention: null,
     supervision: {
       studentId: "stu-1",
       teacherId: "teacher-1",
@@ -234,28 +106,7 @@ const scenarios = {
 };
 scenarios.modified = {
   ...scenarios.supervised,
-  convention: {
-    ...scenarios.supervised.convention,
-    state: "DRAFT",
-    studentAddress: "5 avenue du Campus, Tunis",
-    studentPhone: "+216 22 456 789",
-    currentActorId: "RESP#Institut A",
-    rejectionReason: null,
-    events: scenarios.supervised.convention.events
-      .map((event) =>
-        ["SIGNED", "APPROVED"].includes(event.type)
-          ? { ...event, invalidated: true }
-          : event,
-      )
-      .concat({
-        timestamp: "2026-11-10T12:00:00Z",
-        type: "MODIFIED",
-        actorRole: "ETU",
-        message: "Informations modifiées par l’étudiant",
-        oldHash: "a82f7e9d20c1",
-        newHash: "e14548ab0298",
-      }),
-  },
+  convention: null,
 };
 // Added: the Rapport page needs a state with a report already submitted.
 scenarios.reportReview = {
@@ -271,7 +122,7 @@ const wait = (data) =>
 const SCENARIO = REAL.applications ? "new" : MOCK_SCENARIO;
 const current = () => scenarios[SCENARIO] || scenarios.applying;
 let mockApplications = [...current().applications];
-let mockConvention = current().convention;
+const mockConvention = current().convention;
 let mockSupervision = current().supervision;
 // NOT IN API YET: profile extras the API does not store yet (kept in memory for the mock).
 // bio, contactEmail, avatarUrl, links, cvFileName, cvSize, cvUploadedAt (the API only stores cvKey).
@@ -486,9 +337,10 @@ export async function getConventionPdfUrl() {
       details: {},
     };
   }
+  const documentHash = convention.frozenHash || convention.documentHash;
   const source = [
     convention.renderedText,
-    `Empreinte : ${convention.pdfSha256}`,
+    `Empreinte : ${documentHash || ""}`,
   ]
     .join("\n")
     .replace(/[^\x20-\x7E\n]/g, "?");

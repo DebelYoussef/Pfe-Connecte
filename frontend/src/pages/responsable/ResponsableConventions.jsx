@@ -6,6 +6,8 @@ import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
+import Tooltip from "../../components/ui/Tooltip";
+import { computePartyProgress } from "../../lib/conventionDocument";
 import {
   getApprovedCount,
   getBlockedCount,
@@ -14,6 +16,7 @@ import {
   getConventionsToSignCount,
   isBlocked,
   listConventions,
+  RESPONSABLE_DATA_CHANGED_EVENT,
 } from "../../services.responsable";
 
 const STATE_LABELS = {
@@ -24,13 +27,12 @@ const STATE_LABELS = {
   APPROVED: "Approuvée",
 };
 
-function formatDaysSince(value) {
-  if (!value) return "";
-  const days = Math.max(
+function daysSince(value) {
+  if (!value) return null;
+  return Math.max(
     0,
     Math.floor((Date.now() - new Date(value).getTime()) / (24 * 60 * 60 * 1000)),
   );
-  return `depuis ${days} jour${days > 1 ? "s" : ""}`;
 }
 
 function waitingFor(convention) {
@@ -88,7 +90,20 @@ export default function ResponsableConventions() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (active) void load();
+    };
+    Promise.resolve().then(refresh);
+    window.addEventListener(RESPONSABLE_DATA_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener(RESPONSABLE_DATA_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [load]);
 
   const counts = useMemo(() => ({
     TO_SIGN: getConventionsToSignCount(countItems),
@@ -99,26 +114,24 @@ export default function ResponsableConventions() {
     ALL: countItems.length,
   }), [countItems]);
 
+  const activeFilter =
+    items.length && !counts.TO_SIGN && filter === "TO_SIGN" ? "ALL" : filter;
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("fr");
     return items.filter((item) => {
       let tabMatch = true;
-      if (filter === "TO_SIGN") tabMatch = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${item.etab}`;
-      if (filter === "DRAFT") tabMatch = item.state === "DRAFT";
-      if (filter === "IN_PROGRESS") tabMatch = ["SUBMITTED", "SIGNED_STUDENT"].includes(item.state);
-      if (filter === "BLOCKED") tabMatch = isBlocked(item);
-      if (filter === "APPROVED") tabMatch = item.state === "APPROVED";
+      if (activeFilter === "TO_SIGN") tabMatch = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${item.etab}`;
+      if (activeFilter === "DRAFT") tabMatch = item.state === "DRAFT";
+      if (activeFilter === "IN_PROGRESS") tabMatch = ["SUBMITTED", "SIGNED_STUDENT"].includes(item.state);
+      if (activeFilter === "BLOCKED") tabMatch = isBlocked(item);
+      if (activeFilter === "APPROVED") tabMatch = item.state === "APPROVED";
       if (!tabMatch) return false;
       if (!query) return true;
       return [item.studentName, item.companyName, item.offerTitle, item.subjectTitle]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase("fr").includes(query));
     });
-  }, [filter, items, search]);
-
-  useEffect(() => {
-    if (items.length && !counts.TO_SIGN && filter === "TO_SIGN") setFilter("ALL");
-  }, [counts.TO_SIGN, filter, items.length]);
+  }, [activeFilter, items, search]);
 
   const cardLinks = [
     ["TO_SIGN", "À signer", counts.TO_SIGN],
@@ -145,7 +158,7 @@ export default function ResponsableConventions() {
         {cardLinks.map(([id, label, count]) => (
           <button
             type="button"
-            className={filter === id ? "responsable-convention-stat active" : "responsable-convention-stat"}
+            className={activeFilter === id ? "responsable-convention-stat active" : "responsable-convention-stat"}
             key={id}
             onClick={() => setFilter(id)}
           >
@@ -167,8 +180,8 @@ export default function ResponsableConventions() {
             <button
               type="button"
               role="tab"
-              aria-selected={filter === id}
-              className={filter === id ? "active" : ""}
+              aria-selected={activeFilter === id}
+              className={activeFilter === id ? "active" : ""}
               onClick={() => setFilter(id)}
               key={id}
             >
@@ -192,15 +205,17 @@ export default function ResponsableConventions() {
             <Skeleton key={index} className="responsable-row-skeleton" />
           ))}
         </div>
-      ) : visible.length ? (
+      ) : visible.length || nextCursor ? (
         <>
-          <div className="responsable-convention-list">
-            {visible.map((item) => {
+          {visible.length ? (
+            <div className="responsable-convention-list">
+              {visible.map((item) => {
               const blocked = isBlocked(item);
-              const daysLabel = formatDaysSince(item.stepSince);
+              const days = daysSince(item.stepSince);
               const toSign = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${item.etab}`;
+              const progress = computePartyProgress(item.templateSnapshot, item.values);
               return (
-                <article key={item.conventionId}>
+                <article className="responsable-convention-item" key={item.conventionId}>
                   <span className="responsable-student-avatar" aria-hidden="true">
                     {initials(item.studentName)}
                   </span>
@@ -212,28 +227,51 @@ export default function ResponsableConventions() {
                     <small>{item.offerTitle || item.subjectTitle}</small>
                     <span className="responsable-convention-company">{item.companyName}</span>
                   </div>
+                  <div
+                    className="responsable-row-completion"
+                    aria-label="Complétude de la convention"
+                  >
+                    <MiniMeter label="Étudiant" progress={progress.student} />
+                    <MiniMeter label="Entreprise" progress={progress.company} />
+                  </div>
                   <div className="responsable-convention-status">
                     <StatusBadge status={item.state} label={STATE_LABELS[item.state]} />
                     <small>En attente de <strong>{waitingFor(item)}</strong></small>
                   </div>
                   <div className={blocked ? "responsable-step-age blocked" : "responsable-step-age"}>
-                    {item.stepSince ? <span>{daysLabel}</span> : <span>—</span>}
+                    {blocked && days !== null ? (
+                      <span>
+                        Bloquée depuis {days} jour{days > 1 ? "s" : ""}
+                      </span>
+                    ) : (
+                      <span>—</span>
+                    )}
                     <code>{item.shortRef}</code>
                   </div>
                   <Link className="outlined-action" to={`/responsable/conventions/${item.conventionId}`}>Voir</Link>
                 </article>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              title="Aucune convention sur cette page"
+              message="Chargez les conventions suivantes pour poursuivre la recherche."
+            />
+          )}
           {nextCursor && (
-            <button
-              type="button"
-              className="secondary-button responsable-load-more"
-              disabled={loadingMore}
-              onClick={() => void load(nextCursor)}
-            >
-              {loadingMore ? "Chargement…" : "Charger plus"}
-            </button>
+            <Tooltip content={loadingMore ? "Chargement des conventions en cours." : "Afficher les conventions suivantes."}>
+              <span className="convention-disabled-action" tabIndex={loadingMore ? 0 : undefined}>
+                <button
+                  type="button"
+                  className="secondary-button responsable-load-more"
+                  disabled={loadingMore}
+                  onClick={() => void load(nextCursor)}
+                >
+                  {loadingMore ? "Chargement…" : "Charger plus"}
+                </button>
+              </span>
+            </Tooltip>
           )}
         </>
       ) : (
@@ -245,5 +283,28 @@ export default function ResponsableConventions() {
         />
       )}
     </section>
+  );
+}
+
+function MiniMeter({ label, progress }) {
+  const ratio = progress.total
+    ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+    : 0;
+  return (
+    <div className="responsable-mini-meter">
+      <span>
+        {label} {progress.done}/{progress.total}
+      </span>
+      <span
+        className="responsable-mini-meter-track"
+        role="progressbar"
+        aria-label={`Complétude ${label.toLowerCase()}`}
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.done}
+      >
+        <span style={{ width: `${ratio}%` }} />
+      </span>
+    </div>
   );
 }

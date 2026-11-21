@@ -4167,7 +4167,7 @@ h2 {
   .convention-student-info,
   .convention-action-bar,
   .convention-aside:not(.student-convention-aside),
-  .responsable-edit-document,
+  .responsable-correction-form,
   .ui-toast,
   .confirm-backdrop,
   .paper-reveal-button,
@@ -6860,35 +6860,19 @@ a.company-dashboard-stat:hover {
 .responsable-convention-detail-grid {
   grid-template-columns: minmax(0, 1fr) 300px;
 }
-.responsable-edit-document {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 490px;
-  padding: 24px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-.responsable-edit-document .responsable-textarea {
-  flex: 1;
-  min-height: 330px;
-}
-.responsable-edit-document .hero-button {
-  align-self: flex-end;
-}
 .responsable-corrected-label {
   color: var(--primary);
   font-size: 11px;
   font-weight: 700;
 }
-.responsable-sign-fingerprint,
+.convention-sign-fingerprint,
 .responsable-rejection-field {
   display: grid;
   gap: 7px;
   margin: 12px 0;
   font-size: 12px;
 }
-.responsable-sign-fingerprint code {
+.convention-sign-fingerprint code {
   width: max-content;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -6931,13 +6915,6 @@ a.company-dashboard-stat:hover {
 }
 .danger-outline-button:disabled,
 .outlined-action:disabled,
-.responsable-edit-document .hero-button:disabled {
-  border-color: var(--border);
-  background: var(--bg);
-  color: var(--muted);
-  cursor: not-allowed;
-}
-.responsable-edit-document .hero-button:hover:disabled,
 .danger-outline-button:hover:disabled {
   background: var(--bg);
 }
@@ -7003,9 +6980,7 @@ a.company-dashboard-stat:hover {
   margin-bottom: 18px;
 }
 .responsable-section-heading h3,
-.responsable-dashboard-card h3,
-.responsable-detail-card h3,
-.responsable-timeline h3 {
+.responsable-dashboard-card h3 {
   margin: 0;
   font: 600 20px/1.25 var(--serif);
 }
@@ -7211,33 +7186,11 @@ a.company-dashboard-stat:hover {
   height: 300px;
   margin: 0;
 }
-.responsable-detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.5fr);
-  align-items: start;
-  gap: 18px;
-}
-.responsable-detail-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-}
 .responsable-detail-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-.responsable-rendered-text,
-.responsable-placeholder-help {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.7;
-  white-space: pre-wrap;
 }
 .responsable-rejection {
   margin: 0;
@@ -7247,9 +7200,6 @@ a.company-dashboard-stat:hover {
   color: var(--danger);
   font-size: 12px;
 }
-.responsable-textarea,
-.responsable-detail-card input,
-.responsable-detail-card select,
 .responsable-encadrement-list select {
   width: 100%;
   min-height: 42px;
@@ -7260,42 +7210,18 @@ a.company-dashboard-stat:hover {
   color: var(--text);
   font: inherit;
 }
-.responsable-textarea {
-  min-height: 240px;
-  resize: vertical;
-  line-height: 1.6;
-}
-.responsable-detail-card .hero-button,
 .responsable-deadline-form .hero-button,
 .responsable-profile-form .hero-button {
   align-self: flex-end;
 }
-.responsable-detail-card input:disabled,
 .responsable-deadline-form input:disabled,
 .responsable-profile-form input:disabled,
 .responsable-encadrement-list button:disabled,
-.responsable-detail-card button:disabled {
+.responsable-convention-item button:disabled {
   border-color: var(--border);
   background: var(--bg);
   color: var(--muted);
   cursor: not-allowed;
-}
-.responsable-timeline article {
-  display: grid;
-  gap: 4px;
-  padding: 11px 0;
-  border-top: 1px solid var(--border);
-}
-.responsable-timeline article:first-of-type {
-  border-top: 0;
-}
-.responsable-timeline small,
-.responsable-timeline p {
-  color: var(--muted);
-  font-size: 11px;
-}
-.responsable-timeline p {
-  margin: 0;
 }
 .responsable-encadrement-list article {
   grid-template-columns: minmax(180px, 1fr) minmax(220px, 0.9fr) auto;
@@ -7324,8 +7250,7 @@ a.company-dashboard-stat:hover {
 
 @media (max-width: 900px) {
   .responsable-action-grid,
-  .responsable-dashboard-columns,
-  .responsable-detail-grid {
+  .responsable-dashboard-columns {
     grid-template-columns: 1fr;
   }
   .responsable-encadrement-list article {
@@ -7359,7 +7284,6 @@ a.company-dashboard-stat:hover {
     grid-row: 1 / span 2;
     grid-column: 2;
   }
-  .responsable-detail-card,
   .responsable-dashboard-card {
     padding: 14px;
   }
@@ -7676,6 +7600,174 @@ a.company-dashboard-stat:hover {
       grid-template-columns: 1fr;
     }
   }
+
+.responsable-convention-list article.responsable-convention-item {
+  grid-template-columns:
+    42px minmax(150px, 1fr) minmax(170px, 0.9fr)
+    minmax(145px, 0.75fr) minmax(125px, auto) auto;
+  min-width: 0;
+}
+.responsable-row-completion,
+.responsable-mini-meter {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.responsable-mini-meter {
+  gap: 4px;
+}
+.responsable-mini-meter > span:first-child {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.responsable-mini-meter-track {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+.responsable-mini-meter-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.responsable-correction-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.responsable-correction-form .convention-section-heading {
+  align-items: flex-start;
+}
+.responsable-correction-form .convention-section-heading h3 {
+  margin: 0;
+  font: 600 20px/1.25 var(--serif);
+}
+.responsable-correction-form .convention-section-heading p,
+.responsable-detail-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.responsable-static-fields,
+.responsable-article-editor {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+}
+.responsable-static-fields legend,
+.responsable-article-editor legend {
+  padding: 0 5px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.responsable-static-fields input,
+.responsable-static-fields textarea,
+.responsable-article-editors input,
+.responsable-article-editors textarea,
+.responsable-rejection-field textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.responsable-static-fields textarea,
+.responsable-article-editors textarea,
+.responsable-rejection-field textarea {
+  resize: vertical;
+}
+.responsable-article-editors {
+  display: grid;
+  gap: 10px;
+}
+.responsable-article-editors > .responsable-detail-heading {
+  align-items: flex-start;
+}
+.responsable-detail-heading h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.responsable-article-editor {
+  display: grid;
+  gap: 10px;
+}
+.responsable-correction-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.responsable-correction-actions .submit-button {
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+}
+.responsable-correction-hash {
+  color: var(--muted);
+  font-size: 11px;
+}
+.responsable-correction-hash code {
+  color: var(--text);
+}
+.convention-sign-fingerprint {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+.responsable-convention-detail-page .convention-action-bar {
+  position: sticky;
+  z-index: 3;
+  bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+@media (max-width: 1100px) {
+  .responsable-convention-list article.responsable-convention-item {
+    grid-template-columns:
+      42px minmax(130px, 1fr) minmax(150px, 0.8fr)
+      minmax(140px, auto) auto;
+  }
+  .responsable-convention-item .responsable-step-age {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .responsable-convention-list article.responsable-convention-item {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+  .responsable-convention-item .responsable-row-completion,
+  .responsable-convention-item .responsable-convention-status {
+    grid-column: 2;
+  }
+  .responsable-convention-item > a {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+  }
+  .responsable-convention-detail-page .convention-action-bar {
+    position: static;
+  }
+}
 
 .template-builder-page {
   max-width: 1480px;

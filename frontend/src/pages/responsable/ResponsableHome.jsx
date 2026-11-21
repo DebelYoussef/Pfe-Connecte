@@ -1,11 +1,12 @@
 import { ArrowRight, CalendarDays, FileSignature, GraduationCap, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/ui/EmptyState";
 import Skeleton from "../../components/ui/Skeleton";
 import { useNotifications } from "../../context/NotificationsContext";
 import { getUser } from "../../auth";
+import { etabName } from "../../lib/conventionDocument";
 import {
   getBlockedCount,
   getDraftCount,
@@ -13,6 +14,7 @@ import {
   getDeadlineSettings,
   getWithoutSupervisorCount,
   listConventions,
+  RESPONSABLE_DATA_CHANGED_EVENT,
 } from "../../services.responsable";
 
 function formatDate(value) {
@@ -28,9 +30,10 @@ export default function ResponsableHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deadline, setDeadline] = useState(null);
+  const [currentTime, setCurrentTime] = useState(null);
   const notifications = useNotifications();
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -40,16 +43,28 @@ export default function ResponsableHome() {
       ]);
       setItems(result.items);
       setDeadline(deadlineResult);
+      setCurrentTime(Date.now());
     } catch (loadError) {
       setError(loadError);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    void load();
-  }, []);
+    let active = true;
+    const refresh = () => {
+      if (active) void load();
+    };
+    Promise.resolve().then(refresh);
+    window.addEventListener(RESPONSABLE_DATA_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener(RESPONSABLE_DATA_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [load]);
 
   const toSign = getToSignConventions(items);
   const withoutSupervisorCount = getWithoutSupervisorCount(items);
@@ -63,8 +78,8 @@ export default function ResponsableHome() {
   ].filter((card) => card.count > 0);
 
   const deadlineDate = deadline?.deadline ? new Date(`${deadline.deadline}T12:00:00`) : null;
-  const remaining = deadlineDate
-    ? Math.ceil((deadlineDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+  const remaining = deadlineDate && currentTime !== null
+    ? Math.ceil((deadlineDate.getTime() - currentTime) / (24 * 60 * 60 * 1000))
     : null;
 
   return (
@@ -82,7 +97,7 @@ export default function ResponsableHome() {
           <h3 className="responsable-hero-title">
             Bonjour, {user.firstName || user.email?.split("@")[0] || "Responsable"}
           </h3>
-          <p>{user.etab === "ETAB2" ? "Institut B" : "Institut A"} — Suivi des conventions et de l’encadrement.</p>
+          <p>{etabName(user.etab)} — Suivi des conventions et de l’encadrement.</p>
         </div>
         <CalendarDays size={26} aria-hidden="true" />
       </section>
@@ -124,7 +139,7 @@ export default function ResponsableHome() {
         <span>
           <strong>Échéance du PFE</strong>
           {deadline?.deadlineEnabled && deadlineDate
-            ? <small>{formatDate(deadlineDate)} · {remaining >= 0 ? `${remaining} jour${remaining > 1 ? "s" : ""} restant${remaining > 1 ? "s" : ""}` : "Échéance dépassée"}</small>
+            ? <small>{formatDate(deadlineDate)} · {remaining === null ? "Calcul en cours" : remaining >= 0 ? `${remaining} jour${remaining > 1 ? "s" : ""} restant${remaining > 1 ? "s" : ""}` : "Échéance dépassée"}</small>
             : <small>Échéance désactivée</small>}
         </span>
         <ArrowRight size={16} />

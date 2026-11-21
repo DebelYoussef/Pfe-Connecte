@@ -74,9 +74,22 @@ export default function ConventionTimeline({
                 )}
               </small>
             )}
-            {event.type === "SIGNED" && event.hash && (
+            {["SIGNED", "APPROVED"].includes(event.type) && event.hash && (
               <small className="modified-hashes">
-                Empreinte signée <code>{event.hash.slice(0, 12)}</code>
+                {event.type === "APPROVED"
+                  ? "Empreinte d’approbation"
+                  : "Empreinte signée"}{" "}
+                <code>{event.hash.slice(0, 12)}</code>
+              </small>
+            )}
+            {event.type === "CORRECTED" && event.hash && (
+              <small className="modified-hashes">
+                Nouvelle empreinte <code>{event.hash.slice(0, 12)}</code>
+              </small>
+            )}
+            {event.type === "REJECTED" && event.hash && (
+              <small className="modified-hashes">
+                Empreinte au refus <code>{event.hash.slice(0, 12)}</code>
               </small>
             )}
             {event.invalidated && (

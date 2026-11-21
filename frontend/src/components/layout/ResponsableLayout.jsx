@@ -11,7 +11,6 @@ import { useEffect, useState } from "react";
 import AppShell from "./AppShell";
 import {
   RESPONSABLE_DATA_CHANGED_EVENT,
-  getBlockedCount,
   getConventionsToSignCount,
   getWithoutSupervisorCount,
   listConventions,
@@ -60,9 +59,11 @@ export default function ResponsableLayout() {
       void reload();
     };
     window.addEventListener(RESPONSABLE_DATA_CHANGED_EVENT, onChange);
+    window.addEventListener("storage", onChange);
     return () => {
       active = false;
       window.removeEventListener(RESPONSABLE_DATA_CHANGED_EVENT, onChange);
+      window.removeEventListener("storage", onChange);
     };
   }, []);
 

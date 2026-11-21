@@ -304,7 +304,6 @@ function createEvent(conventionId, type, actorId, actorRole, fromState, toState,
 function makeConvention({ id, app, companyId, state, days, modified = false }) {
   const conventionId = ID(id);
   const student = STUDENTS[Number(app.studentId.slice(-1)) - 1];
-  const offer = OFFER_SEEDS.find((_, index) => ID(100 + index) === app.offerId);
   const createdAt = daysAgo(days);
   const studentActorId = app.studentId;
   const events = [
@@ -329,7 +328,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SUBMITTED",
         "SIGNED_STUDENT",
         daysAgo(days - 1),
-        { pdfSha256: "a".repeat(64) },
       ),
     );
   } else if (state === "APPROVED") {
@@ -342,7 +340,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SUBMITTED",
         "SIGNED_STUDENT",
         daysAgo(days - 1),
-        { pdfSha256: "b".repeat(64) },
       ),
       createEvent(
         conventionId,
@@ -352,7 +349,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SIGNED_STUDENT",
         "SIGNED_COMPANY",
         daysAgo(days - 1.5),
-        { pdfSha256: "b".repeat(64) },
       ),
       createEvent(
         conventionId,
@@ -362,7 +358,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
         "SIGNED_COMPANY",
         "APPROVED",
         daysAgo(days - 2),
-        { pdfSha256: "c".repeat(64) },
       ),
     );
   } else if (modified) {
@@ -387,9 +382,6 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
     offerId: app.offerId,
     etab: student.etab,
     state,
-    renderedText: `Convention de stage — ${student.firstName} ${student.lastName}\nOffre : ${offer?.title || "Stage de fin d’études"}`,
-    templateVersion: 1,
-    pdfSha256: "a".repeat(64),
     shortRef: `PFE-${String(id).padStart(4, "0")}`,
     ...(state === "SIGNED_STUDENT"
       ? { currentActorId: companyId, stepSince: daysAgo(days - 1) }
@@ -402,7 +394,7 @@ function makeConvention({ id, app, companyId, state, days, modified = false }) {
           stepSince: daysAgo(days - 1),
         }
       : {}),
-    ...(state === "APPROVED" ? { finalSha256: "c".repeat(64), approvedAt: daysAgo(days - 2) } : {}),
+    ...(state === "APPROVED" ? { approvedAt: daysAgo(days - 2) } : {}),
     createdAt,
     events,
   };
@@ -1306,7 +1298,7 @@ export async function getConventionPdfUrl(conventionId) {
     "CONVENTION DE STAGE PFE",
     convention.shortRef,
     ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 4),
-    `Empreinte : ${convention.pdfSha256}`,
+    `Empreinte : ${convention.frozenHash || convention.documentHash || ""}`,
   ]);
   return wait({
     url,

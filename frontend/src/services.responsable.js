@@ -66,12 +66,12 @@ let supervisionRecords = new Map();
 
 let notifications = [
   { id: "notif-1", createdAt: daysAgo(0, 14), type: "CONVENTION", title: "Convention à signer", body: "Une convention attend votre signature.", refType: "CONVENTION", refId: "responsable-convention-1", read: false },
-  { id: "notif-2", createdAt: daysAgo(1, 10), type: "CONVENTION", title: "Convention bloquée depuis 5 jours", body: "La convention d’Omar Dridi nécessite une intervention.", refType: "CONVENTION", refId: "responsable-convention-4", read: false },
+  { id: "notif-2", createdAt: daysAgo(1, 10), type: "CONVENTION", title: "Convention bloquée", body: "Une convention nécessite une intervention.", refType: "CONVENTION", refId: "responsable-convention-4", read: false },
   { id: "notif-3", createdAt: daysAgo(2, 9), type: "SUPERVISION", title: "Encadrement à définir", body: "Deux étudiants approuvés sont sans enseignant.", refType: "SUPERVISION", refId: "", read: false },
   { id: "notif-4", createdAt: daysAgo(3, 16), type: "REMINDER", title: "Échéance du PFE", body: "Préparez les conventions avant la date limite.", refType: "REMINDER", refId: "", read: true },
-  { id: "notif-5", createdAt: daysAgo(4, 11), type: "CONVENTION", title: "Convention refusée", body: "Lina Messaoud doit corriger sa convention.", refType: "CONVENTION", refId: "responsable-convention-5", read: true },
-  { id: "notif-6", createdAt: daysAgo(5, 13), type: "SUPERVISION", title: "Convention approuvée", body: "Sara Gharbi est prête à être encadrée.", refType: "SUPERVISION", refId: "responsable-convention-7", read: false },
-  { id: "notif-7", createdAt: daysAgo(6, 15), type: "CONVENTION", title: "Convention modifiée", body: "Mehdi Bouaziz a modifié sa convention.", refType: "CONVENTION", refId: "responsable-convention-6", read: true },
+  { id: "notif-5", createdAt: daysAgo(4, 11), type: "CONVENTION", title: "Convention refusée", body: "Une convention attend une correction.", refType: "CONVENTION", refId: "responsable-convention-5", read: true },
+  { id: "notif-6", createdAt: daysAgo(5, 13), type: "SUPERVISION", title: "Convention approuvée", body: "Une convention approuvée attend un encadrant.", refType: "SUPERVISION", refId: "responsable-convention-7", read: false },
+  { id: "notif-7", createdAt: daysAgo(6, 15), type: "CONVENTION", title: "Convention modifiée", body: "Une convention a été modifiée.", refType: "CONVENTION", refId: "responsable-convention-6", read: true },
   { id: "notif-8", createdAt: daysAgo(7, 8), type: "REMINDER", title: "Rappel institutionnel", body: "Vérifiez les conventions en attente.", refType: "REMINDER", refId: "", read: true },
 ];
 
@@ -270,49 +270,6 @@ export function getApprovedCount(items = []) {
   return getApprovedConventions(items).length;
 }
 
-export async function getConventionTemplate() {
-  const template = await getStoredTemplate();
-  const bindingPlaceholders = {
-    "institution.name": "{{etab}}",
-    "student.fullName": "{{student}}",
-    "company.name": "{{company}}",
-    "offer.title": "{{subject}}",
-    "offer.durationWeeks": "{{durationWeeks}}",
-  };
-  const text =
-    template.legacyText ||
-    [
-      ...template.header.lines,
-      "",
-      template.title,
-      ...template.sections.flatMap((section) => [
-        "",
-        section.title,
-        ...section.fields.map((field) => {
-          const value =
-            field.source === "AUTO"
-              ? bindingPlaceholders[field.binding] || field.label
-              : field.source === "STATIC"
-                ? field.value
-                : field.key === "internshipStartDate"
-                  ? "{{startDate}}"
-                  : field.key === "internshipEndDate"
-                    ? "{{endDate}}"
-                    : field.label;
-          return `${field.label} : ${value}`;
-        }),
-      ]),
-      "",
-      ...template.articles.flatMap((article) => [article.title, article.text]),
-    ].join("\n");
-  return wait({
-    etab: template.etab,
-    version: template.version,
-    text,
-    createdAt: template.createdAt,
-  });
-}
-
 // NOT IN API YET: structured templates are stored in the shared local mock store.
 export async function getStructuredConventionTemplate() {
   return wait(await getStoredTemplate());
@@ -326,35 +283,6 @@ export async function putStructuredConventionTemplate(template) {
   const updated = await putStoredTemplate(template);
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait(updated);
-}
-
-export async function putConventionTemplate({ text } = {}) {
-  const normalized = String(text ?? "");
-  if (!normalized.trim()) {
-    return mockError(
-      400,
-      "VALIDATION_ERROR",
-      "Le texte du modèle est requis.",
-      { fields: ["text"] },
-    );
-  }
-  const currentTemplate = await getStoredTemplate();
-  const template = await putStoredTemplate({
-    ...currentTemplate,
-    // NOT IN API YET: preserve the old text-editor payload while the UI migrates to structured fields.
-    legacyText: normalized,
-  });
-  window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({
-    etab: template.etab,
-    version: template.version,
-    text: normalized,
-    createdAt: template.createdAt,
-  });
-}
-
-export async function updateConventionTemplate(text) {
-  return putConventionTemplate({ text });
 }
 
 export async function getDeadlineSettings() {
@@ -442,7 +370,7 @@ export async function assignSupervisor(studentId, teacherId) {
   ) {
     return mockError(409, "CONFLICT", "Cet étudiant possède déjà un encadrement.");
   }
-  const updatedConvention = await assignConventionSupervisor(
+  await assignConventionSupervisor(
     convention.conventionId,
     teacher,
   );
@@ -462,7 +390,7 @@ export async function assignSupervisor(studentId, teacherId) {
       createdAt: timestamp,
       type: "SUPERVISION",
       title: "Encadrant affecté",
-      body: `${teacher.firstName} ${teacher.lastName} vous a été affecté comme encadrant.`,
+      body: "Un encadrant a été affecté à votre suivi.",
       refType: "SUPERVISION",
       refId: studentId,
       read: false,
@@ -472,7 +400,7 @@ export async function assignSupervisor(studentId, teacherId) {
       createdAt: timestamp,
       type: "SUPERVISION",
       title: "Nouvelle affectation",
-      body: `${toConventionView(updatedConvention).studentName} vous a été affecté comme étudiant encadré.`,
+      body: "Un étudiant a été affecté à votre encadrement.",
       refType: "SUPERVISION",
       refId: studentId,
       read: false,
@@ -495,30 +423,7 @@ export async function rejectConvention(conventionId, { reason } = {}) {
 }
 
 export async function correctConvention(conventionId, input = {}) {
-  const correction =
-    typeof input === "string" ? { renderedText: input } : input || {};
-  let structured = correction;
-  if (correction.renderedText !== undefined) {
-    const convention = await getStoredConvention(conventionId);
-    const articles = [...convention.templateSnapshot.articles];
-    if (articles.length) {
-      articles[0] = {
-        ...articles[0],
-        text: String(correction.renderedText ?? ""),
-      };
-    } else {
-      articles.push({
-        id: "article-corrected",
-        title: "Texte corrigé",
-        text: String(correction.renderedText ?? ""),
-      });
-    }
-    structured = {
-      staticValues: correction.staticValues || {},
-      articles,
-    };
-  }
-  const updated = await correctStoredConvention(conventionId, structured);
+  const updated = await correctStoredConvention(conventionId, input);
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
   return wait(toConventionView(updated));
 }
@@ -531,11 +436,12 @@ export async function resubmitConvention(conventionId) {
 
 export async function getConventionPdfUrl(conventionId) {
   const convention = await getConvention(conventionId);
+  const documentHash = convention.frozenHash || convention.documentHash;
   const lines = [
     "CONVENTION DE STAGE PFE",
     convention.shortRef,
     ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 6),
-    `Empreinte : ${convention.pdfSha256}`,
+    `Empreinte : ${documentHash || ""}`,
   ];
   const pdf = `%PDF-1.4\n${lines.join("\n")}\n%%EOF`;
   const url = `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`;

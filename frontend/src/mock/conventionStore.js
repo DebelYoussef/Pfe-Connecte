@@ -628,7 +628,7 @@ async function resetScenarioInStore(store, scenarioName) {
         `RESP#${convention.etab}`,
         fromState,
         "DRAFT",
-        { reason: convention.rejectionReason },
+        { reason: convention.rejectionReason, hash: convention.documentHash },
       ),
     );
   }
@@ -664,7 +664,7 @@ async function resetScenarioInStore(store, scenarioName) {
         "S1",
         "SIGNED_COMPANY",
         "DRAFT",
-        { party: "STUDENT", oldHash },
+        { party: "STUDENT", oldHash, newHash: convention.documentHash },
       ),
     );
   } else if (["signing", "toApprove", "approved"].includes(scenarioName)) {
@@ -728,6 +728,7 @@ async function resetScenarioInStore(store, scenarioName) {
             `RESP#${convention.etab}`,
             "SIGNED_COMPANY",
             "APPROVED",
+            { hash: convention.frozenHash },
           ),
         );
       }
@@ -996,7 +997,7 @@ export async function signConvention(conventionId) {
       actorId,
       fromState,
       convention.state,
-      user.role === "RESP" ? {} : { hash: convention.frozenHash },
+      { hash: convention.frozenHash },
     ),
   );
   await saveConvention(store);
@@ -1035,9 +1036,11 @@ export async function requestModification(conventionId, reason = "") {
       actorIdFor(user.role, convention, user),
       fromState,
       "DRAFT",
+      // NOT IN API YET: the browser mock stores old and current hashes in history.
       {
         party,
         oldHash,
+        newHash: convention.documentHash,
         ...(String(reason || "").trim() ? { reason: String(reason).trim() } : {}),
       },
     ),
@@ -1092,6 +1095,8 @@ export async function correctConvention(conventionId, { staticValues = {}, artic
       actorIdFor("RESP", convention, user),
       "DRAFT",
       "DRAFT",
+      // NOT IN API YET: the browser mock stores the corrected document hash in history.
+      { hash: convention.documentHash },
     ),
   );
   await saveConvention(store);
@@ -1135,7 +1140,7 @@ export async function rejectConvention(conventionId, { reason } = {}) {
       actorIdFor("RESP", convention, user),
       fromState,
       "DRAFT",
-      { reason: normalizedReason },
+      { reason: normalizedReason, hash: convention.documentHash },
     ),
   );
   await saveConvention(store);
