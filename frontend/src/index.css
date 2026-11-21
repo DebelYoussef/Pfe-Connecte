@@ -1994,6 +1994,221 @@ h2 {
   font-size: 16px;
   line-height: 1.8;
 }
+.paper-document {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  color: var(--text);
+}
+.paper-document-header {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 8px 0 18px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+.paper-document-header-lines p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.paper-document-logo {
+  max-width: 72px;
+  max-height: 72px;
+  object-fit: contain;
+}
+.paper-document-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.paper-document-title h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 22px;
+  text-align: center;
+}
+.paper-document-title span,
+.paper-document-footer,
+.paper-document-signatures {
+  font-family: "IBM Plex Sans", sans-serif;
+}
+.paper-document-title span {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.paper-document-sections {
+  display: grid;
+  gap: 14px;
+}
+.paper-document-section,
+.paper-document-articles {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+}
+.paper-document-section h4,
+.paper-document-articles > h4 {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+}
+.paper-document-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  margin: 0;
+}
+.paper-document-field {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.75fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 5px;
+  border-bottom: 1px solid var(--border);
+}
+.paper-document-field dt {
+  font-size: 12px;
+  font-weight: 700;
+}
+.paper-document-field dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.paper-field-value {
+  white-space: pre-wrap;
+}
+.paper-field-help,
+.paper-document-signatures td small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.paper-missing {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 1px 5px;
+  border-bottom: 1px dotted currentColor;
+  border-radius: 2px 2px 0 0;
+  color: var(--text);
+}
+.paper-missing-student,
+.paper-legend-student {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+}
+.paper-missing-company,
+.paper-legend-company {
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+.paper-missing.is-highlighted,
+.paper-document-field.is-highlighted {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
+.paper-missing-print {
+  display: none;
+  width: 100%;
+  min-height: 1em;
+}
+.paper-sensitive-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.paper-reveal-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.paper-document-article-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+.paper-document-article {
+  min-width: 0;
+}
+.paper-document-article h5 {
+  margin: 0 0 5px;
+  font-size: 12px;
+}
+.paper-document-article p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.paper-document-signatures table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.paper-document-signatures th,
+.paper-document-signatures td {
+  width: 33.333%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.paper-document-signatures th {
+  font-size: 11px;
+}
+.paper-document-signatures td {
+  height: 94px;
+  font-size: 11px;
+}
+.paper-document-signatures td strong,
+.paper-document-signatures td code {
+  display: block;
+}
+.paper-document-signatures td code {
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.paper-document-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+}
+.paper-document-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.paper-document-legend span {
+  padding: 3px 6px;
+  border-radius: 2px;
+}
+.paper-document .integrity-line {
+  margin-top: 0 !important;
+}
 .document-actions {
   display: flex;
   gap: 10px;
@@ -3929,6 +4144,7 @@ h2 {
 
 @media print {
   @page {
+    size: A4;
     margin: 16mm;
   }
   html,
@@ -3940,15 +4156,23 @@ h2 {
   }
   .student-sidebar,
   .student-topbar,
+  .sidebar-overlay,
   .convention-page > .page-header,
+  .company-convention-back,
+  .company-convention-detail-page > .page-header,
+  .responsable-convention-detail-page > .page-header,
   .convention-modified-banner,
   .convention-error,
   .convention-tracker,
   .convention-student-info,
   .convention-action-bar,
   .convention-aside,
+  .responsable-edit-document,
   .ui-toast,
-  .confirm-backdrop {
+  .confirm-backdrop,
+  .paper-reveal-button,
+  .paper-document-legend,
+  .tooltip-wrap {
     display: none !important;
   }
   .student-main {
@@ -3963,7 +4187,9 @@ h2 {
     margin: 0 !important;
   }
   .convention-grid,
-  .convention-main-column {
+  .convention-main-column,
+  .company-convention-detail-page,
+  .responsable-convention-detail-page {
     display: block !important;
   }
   .paper-document {
@@ -3976,6 +4202,40 @@ h2 {
     box-shadow: none !important;
     background: #fff !important;
     color: #000 !important;
+  }
+  .paper-document-section,
+  .paper-document-article,
+  .paper-document-signatures,
+  .paper-document-title,
+  .paper-document-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .paper-document-section,
+  .paper-document-articles,
+  .paper-document-title,
+  .paper-document-signatures th,
+  .paper-document-signatures td {
+    border-color: #000 !important;
+  }
+  .paper-document-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .paper-missing {
+    display: block !important;
+    min-height: 1em;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .paper-missing-screen {
+    display: none !important;
+  }
+  .paper-missing-print {
+    display: block !important;
+    border-bottom: 1px dotted #000;
+  }
+  .paper-document .integrity-line {
+    display: block !important;
   }
   .paper-document h3,
   .paper-document p,

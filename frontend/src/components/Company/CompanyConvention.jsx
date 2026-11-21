@@ -12,14 +12,12 @@ import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Toast from "../../components/ui/Toast";
 import Tooltip from "../../components/ui/Tooltip";
-import { getUser } from "../../auth";
 import {
   getConvention,
   getConventionPdfUrl,
   rejectConvention,
   signConvention,
 } from "../../services.company";
-import { getConventionTextHash } from "../../services";
 
 const STATE_LABELS = {
   DRAFT: "Brouillon",
@@ -44,16 +42,11 @@ function formatDate(value) {
 
 function waitLabel(convention) {
   if (convention.state === "APPROVED") return undefined;
-  if (
-    convention.state === "SIGNED_STUDENT" &&
-    convention.currentActorId === getUser()?.userId
-  )
-    return "Vous";
+  if (convention.currentActorId === convention.companyId) return "Vous";
+  if (convention.currentActorId === convention.studentId) return "Étudiant";
   if (String(convention.currentActorId || "").startsWith("RESP#"))
     return "Responsable";
-  if (convention.state === "SIGNED_COMPANY") return "Responsable";
-  if (convention.state === "SIGNED_STUDENT") return "Entreprise";
-  return "Étudiant";
+  return "Entreprise";
 }
 
 function errorTitle(error) {
@@ -86,7 +79,6 @@ export default function CompanyConvention() {
   const [dialog, setDialog] = useState(null);
   const [signatureAcknowledged, setSignatureAcknowledged] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
-  const [integrityHash, setIntegrityHash] = useState("");
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -119,17 +111,6 @@ export default function CompanyConvention() {
     setRetry((value) => value + 1);
   }
 
-  useEffect(() => {
-    if (!convention?.renderedText || !convention.pdfSha256) return undefined;
-    let active = true;
-    getConventionTextHash(convention.renderedText)
-      .then((hash) => active && setIntegrityHash(hash))
-      .catch(() => active && setIntegrityHash(""));
-    return () => {
-      active = false;
-    };
-  }, [convention?.renderedText, convention?.pdfSha256]);
-
   const events = useMemo(
     () =>
       [...(convention?.events || [])].sort(
@@ -148,14 +129,10 @@ export default function CompanyConvention() {
     ],
     [convention?.state],
   );
-  const companyId = getUser()?.userId;
   const canSign =
     convention?.state === "SIGNED_STUDENT" &&
-    convention.currentActorId === companyId;
+    convention.currentActorId === convention.companyId;
   const canReject = REJECTABLE_STATES.includes(convention?.state);
-  const integrityVerified = Boolean(
-    integrityHash && integrityHash === convention?.pdfSha256,
-  );
   const modificationEvent = [...events]
     .reverse()
     .find((event) => event.type === "MODIFIED" && !event.invalidated);
@@ -294,9 +271,7 @@ export default function CompanyConvention() {
         <div className="convention-main-column">
           <ConventionDocument
             convention={convention}
-            integrityVerified={integrityVerified}
-            integrityHash={integrityHash}
-            onCopy={copyValue}
+            highlightParty="COMPANY"
           />
           <div className="document-actions convention-action-bar">
             {canSign ? (
@@ -372,7 +347,7 @@ export default function CompanyConvention() {
             </p>
             <p>
               <strong>Établissement</strong>
-              {convention.etab || "—"}
+              {convention.etabName || "—"}
             </p>
             <p>
               <strong>Créée le</strong>

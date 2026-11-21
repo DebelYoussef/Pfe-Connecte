@@ -1,6 +1,15 @@
 
 import { getToken, getUser, saveSession } from "./auth";
 import { api } from "./api";
+import {
+  createConventionFromApplication,
+  getConventions as listMockConventions,
+  requestModification,
+  saveFields,
+  signConvention as signMockConvention,
+  toConventionView,
+} from "./mock/conventionStore";
+import { sha256Hex } from "./lib/conventionDocument";
 
 // REAL/MOCK SWITCH. true = real API (src/api.js), false = the previous mock, per group.
 // Flip one group back to false if something breaks. Edit it here: the mock state below is built
@@ -398,59 +407,11 @@ async function mockActOnApplication(id, action) {
   return wait(mockApplications.find((item) => item.offerId === id));
 }
 export async function getConventionTextHash(text) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text),
-  );
-  return [...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
-}
-function renderConventionText(convention, profile) {
-  const base =
-    convention.renderedTextTemplate ??
-    `${convention.renderedText || ""}\n\n${conventionInfoTemplate}`;
-  const values = {
-    studentName: [profile.firstName, profile.lastName]
-      .filter(Boolean)
-      .join(" "),
-    studentAddress: convention.studentAddress || "",
-    studentPhone: convention.studentPhone || "",
-    studentEmail: profile.email || "",
-    etab: profile.etab || convention.etab || "",
-    department: profile.department || "",
-    specialty: profile.specialty || "",
-    companyName: convention.companyName || "",
-    offerTitle: convention.offerTitle || "",
-  };
-  return base.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "").trim();
+  return sha256Hex(text);
 }
 export async function getMyConvention() {
-  if (!mockConvention) return wait(null);
-  const profile = await getMe();
-  mockConvention = {
-    ...mockConvention,
-    studentAddress:
-      mockConvention.studentAddress ?? "12 rue des Jasmins, Tunis",
-    studentPhone: mockConvention.studentPhone ?? "+216 22 345 678",
-    renderedTextTemplate:
-      mockConvention.renderedTextTemplate ??
-      `${mockConvention.renderedText || ""}\n\n${conventionInfoTemplate}`,
-  };
-  const renderedText = renderConventionText(mockConvention, profile);
-  if (!/^[a-f0-9]{64}$/i.test(mockConvention.pdfSha256 || "")) {
-    const computedHash = await getConventionTextHash(renderedText);
-    mockConvention = {
-      ...mockConvention,
-      pdfSha256: computedHash,
-      events: (mockConvention.events || []).map((event) =>
-        event.type === "MODIFIED"
-          ? { ...event, newHash: computedHash.slice(0, 12) }
-          : event,
-      ),
-    };
-  }
-  return wait({ ...mockConvention, renderedText });
+  const conventions = await listMockConventions();
+  return wait(conventions[0] ? toConventionView(conventions[0]) : null);
 }
 export async function saveConventionStudentInfo(
   fields,
@@ -464,134 +425,60 @@ export async function saveConventionStudentInfo(
       message: "Convention introuvable",
       details: {},
     };
-  const profile = await getMe();
   const nextFields = {
-    studentAddress: fields.studentAddress.trim(),
-    studentPhone: fields.studentPhone.trim(),
+    studentAddress: String(fields.studentAddress ?? "").trim(),
+    studentPhone: String(fields.studentPhone ?? "").trim(),
   };
-  const renderedText = renderConventionText(
-    { ...current, ...nextFields },
-    profile,
+  const changed = Object.entries(nextFields).some(
+    ([key, value]) => current.values[key] !== value,
   );
-  const nextHash = await getConventionTextHash(renderedText);
-  if (nextHash === current.pdfSha256)
+  if (!changed)
     return { changed: false, convention: current };
-  const signedEvents = (current.events || []).filter(
-    (event) =>
-      !event.invalidated && ["SIGNED", "APPROVED"].includes(event.type),
-  );
-  const hasSignatures = current.state === "APPROVED" || signedEvents.length > 0;
+  const hasSignatures =
+    Boolean(current.frozenHash) ||
+    current.state === "APPROVED" ||
+    (current.signatures || []).length > 0;
   if (hasSignatures && !allowAfterSignature)
     throw {
       status: 409,
-      code: "CONFLICT",
+      code: "DOCUMENT_FROZEN",
       message:
         "Une modification est nécessaire pour modifier des informations déjà signées.",
       details: {},
     };
-  let events = [...(current.events || [])];
-  let nextState = current.state;
-  let currentActorId = current.currentActorId;
-  if (hasSignatures) {
-    events = events.map((event) =>
-      ["SIGNED", "APPROVED"].includes(event.type)
-        ? { ...event, invalidated: true }
-        : event,
-    );
-    /* NOT IN API YET: MODIFIED is a mock convention history event. */ events.push(
-      {
-        timestamp: new Date().toISOString(),
-        type: "MODIFIED",
-        actorRole: "ETU",
-        message: "Informations modifiées par l’étudiant",
-        oldHash: current.pdfSha256.slice(0, 12),
-        newHash: nextHash.slice(0, 12),
-      },
-    );
-    nextState = "DRAFT";
-    currentActorId = `RESP#${profile.etab || current.etab}`;
-    mockNotifications.push(
-      {
-        id: `${Date.now()}#convention-company`,
-        createdAt: new Date().toISOString(),
-        type: "CONVENTION",
-        title: "Convention modifiée",
-        body: "Les signatures ont été annulées après une modification des informations étudiant.",
-        refType: "CONVENTION",
-        refId: current.conventionId,
-        recipientRole: "ENT",
-        recipientId: current.companyId || "co-1",
-        read: false,
-      },
-      {
-        id: `${Date.now()}#convention-responsable`,
-        createdAt: new Date().toISOString(),
-        type: "CONVENTION",
-        title: "Convention à renvoyer",
-        body: "La convention modifiée attend votre renvoi pour signature.",
-        refType: "CONVENTION",
-        refId: current.conventionId,
-        recipientRole: "RESP",
-        recipientId: profile.etab,
-        read: false,
-      },
-    );
-  }
-  mockConvention = {
-    ...mockConvention,
-    ...nextFields,
-    renderedTextTemplate: current.renderedTextTemplate,
-    renderedText,
-    pdfSha256: nextHash,
-    events,
-    state: nextState,
-    currentActorId,
-    approvedAt: hasSignatures ? null : current.approvedAt,
-    rejectionReason: hasSignatures ? null : current.rejectionReason,
-  };
+  if (hasSignatures) await requestModification(current.conventionId);
+  const updated = await saveFields(current.conventionId, nextFields);
   return {
     changed: true,
     signaturesReset: hasSignatures,
-    convention: await getMyConvention(),
+    convention: toConventionView(updated),
   };
 }
 export async function signConvention(id) {
-  const current = await getMyConvention();
-  if (
-    !current ||
-    current.conventionId !== id ||
-    current.state !== "SUBMITTED" ||
-    (current.events || []).some(
-      (event) =>
-        !event.invalidated &&
-        event.type === "SIGNED" &&
-        event.actorRole === "ETU",
-    )
-  )
-    throw {
-      status: 409,
-      code: "CONFLICT",
-      message: "La convention ne peut pas être signée à cette étape.",
-      details: {},
-    };
-  mockConvention = {
-    ...mockConvention,
-    state: "SIGNED_STUDENT",
-    currentActorId: "ENT#1",
-    events: [
-      ...(mockConvention.events || []),
-      {
-        timestamp: new Date().toISOString(),
-        type: "SIGNED",
-        actorRole: "ETU",
-        pdfSha256: current.pdfSha256,
-      },
-    ],
-  };
-  return getMyConvention();
+  const updated = await signMockConvention(id);
+  return toConventionView(updated);
 }
 export async function getConventionPdfUrl() {
-  return wait({ url: "#pdf-convention", expiresIn: 300 });
+  const convention = await getMyConvention();
+  if (!convention) {
+    throw {
+      status: 404,
+      code: "NOT_FOUND",
+      message: "Convention introuvable.",
+      details: {},
+    };
+  }
+  const source = [
+    convention.renderedText,
+    `Empreinte : ${convention.pdfSha256}`,
+  ]
+    .join("\n")
+    .replace(/[^\x20-\x7E\n]/g, "?");
+  const pdf = `%PDF-1.4\n${source}\n%%EOF`;
+  return wait({
+    url: `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`,
+    expiresIn: 300,
+  });
 }
 export async function getMySupervision() {
   return wait(mockSupervision);
@@ -1321,13 +1208,21 @@ export async function applyToOffer(id) {
   return REAL.applications ? realApplyToOffer(id) : mockApplyToOffer(id);
 }
 
+async function applyMockApplicationAction(id, action) {
+  const mocked = await mockActOnApplication(id, action);
+  if (action === "confirm" && !(await listMockConventions()).length) {
+    await createConventionFromApplication("A1");
+  }
+  return mocked;
+}
+
 export async function actOnApplication(id, action) {
-  if (!REAL.applications) return mockActOnApplication(id, action);
+  if (!REAL.applications) return applyMockApplicationAction(id, action);
   if (action === "confirm" && !REAL_CONFIRM) {
     // MOCK (conventions backend missing). The mock list is empty while real applications are on,
     // so answer with a CONFIRMED copy instead of undefined. Nothing changes server-side: the next
     // listMyApplications still returns the real status.
-    const mocked = await mockActOnApplication(id, action);
+    const mocked = await applyMockApplicationAction(id, action);
     return (
       mocked ?? {
         studentId: getUser()?.userId,

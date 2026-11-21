@@ -11,7 +11,8 @@ import ConventionTracker from '../../components/convention/ConventionTracker'
 import ConventionTimeline from '../../components/convention/ConventionTimeline'
 import VerificationCard from '../../components/convention/VerificationCard'
 import { getUser } from '../../auth'
-import { getConventionPdfUrl, getConventionTextHash, getMe, getMyConvention, saveConventionStudentInfo, signConvention } from '../../services'
+import { etabName } from '../../lib/conventionDocument'
+import { getConventionPdfUrl, getMe, getMyConvention, saveConventionStudentInfo, signConvention } from '../../services'
 
 const trackerSteps = [
   { label: 'Étudiant', actorRole: 'ETU' },
@@ -40,6 +41,8 @@ function getStudentTurnMessage(convention, signatureEvents) {
   if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ETU')) return 'En attente de la signature de l’entreprise.'
   if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ENT')) return 'En attente de la signature du responsable.'
   if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'RESP')) return 'En attente de l’approbation du responsable.'
+  if (convention.currentActorId === convention.studentId) return 'C’est au tour de l’étudiant.'
+  if (convention.currentActorId === convention.companyId) return 'C’est au tour de l’entreprise.'
   const role = String(convention.currentActorId ?? '').split('#')[0]
   return roleLabels[role] ? `C’est au tour de ${roleLabels[role]}.` : 'La signature n’est pas disponible à cette étape.'
 }
@@ -58,7 +61,6 @@ export default function Convention() {
   const [fieldErrors, setFieldErrors] = useState({})
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
-  const [integrityHash, setIntegrityHash] = useState('')
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [modificationDialogOpen, setModificationDialogOpen] = useState(false)
   const [editingAfterSignature, setEditingAfterSignature] = useState(false)
@@ -93,15 +95,6 @@ export default function Convention() {
     return () => { active = false }
   }, [])
 
-  useEffect(() => {
-    if (!convention?.renderedText || !convention.pdfSha256) return
-    let active = true
-    getConventionTextHash(convention.renderedText)
-      .then((hash) => active && setIntegrityHash(hash))
-      .catch(() => active && setIntegrityHash(''))
-    return () => { active = false }
-  }, [convention?.renderedText, convention?.pdfSha256])
-
   const signatureEvents = useMemo(() => convention ? getSignatureEvents(convention) : [], [convention])
   const hasSignature = convention?.state === 'APPROVED' || signatureEvents.some((event) => event.type === 'SIGNED')
   const editableWithoutSignature = convention?.state === 'DRAFT'
@@ -109,7 +102,6 @@ export default function Convention() {
   const informationEditable = Boolean(editableWithoutSignature || (hasSignature && editingAfterSignature))
   const canSign = convention?.state === 'SUBMITTED'
     && !signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ETU')
-  const integrityVerified = Boolean(integrityHash && integrityHash === convention?.pdfSha256)
   const studentName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.name || '—'
   const validation = useMemo(() => ({
     studentAddress: draft.studentAddress.trim() ? '' : 'L’adresse est requise.',
@@ -239,7 +231,7 @@ export default function Convention() {
                 <dl>
                   <div><dt>Nom</dt><dd>{studentName}</dd></div>
                   <div><dt>E-mail</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'email')}</dd></div>
-                  <div><dt>Établissement</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'etab')}</dd></div>
+                  <div><dt>Établissement</dt><dd>{etabName(getProfileValue(profile ?? {}, getUser() ?? {}, 'etab'))}</dd></div>
                   <div><dt>Département</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'department')}</dd></div>
                   <div><dt>Spécialité</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'specialty')}</dd></div>
                 </dl>
@@ -249,9 +241,7 @@ export default function Convention() {
           </section>
           <ConventionDocument
             convention={convention}
-            integrityVerified={integrityVerified}
-            integrityHash={integrityHash}
-            onCopy={copyValue}
+            highlightParty="STUDENT"
           />
           <div className="document-actions convention-action-bar">
             {canSign ? (

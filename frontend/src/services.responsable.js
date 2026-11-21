@@ -1,11 +1,22 @@
 import { getUser, saveSession } from "./auth";
 import { getToken } from "./auth";
 import {
-  getConventionTextHash,
   getMe as getRealMe,
   updateMe as updateRealMe,
 } from "./services";
 import { api } from "./api";
+import {
+  assignConventionSupervisor,
+  correctConvention as correctStoredConvention,
+  getConvention as getStoredConvention,
+  getConventions as listStoredConventions,
+  getConventionTemplate as getStoredTemplate,
+  putConventionTemplate as putStoredTemplate,
+  rejectConvention as rejectStoredConvention,
+  resubmitConvention as resubmitStoredConvention,
+  signConvention as signStoredConvention,
+  toConventionView,
+} from "./mock/conventionStore";
 
 export const REAL = {
   me: true,
@@ -46,183 +57,11 @@ function dateOnlyAhead(amount) {
 }
 
 function institution() {
-  return getUser()?.etab || "ETAB1";
+  const etab = getUser()?.etab || "ETAB1";
+  if (etab === "Institut A") return "ETAB1";
+  if (etab === "Institut B") return "ETAB2";
+  return etab;
 }
-
-function event(conventionId, timestamp, type, actorId, actorRole, fromState, toState, reason) {
-  return {
-    conventionId,
-    timestamp,
-    type,
-    actorId,
-    actorRole,
-    fromState,
-    toState,
-    ...(reason ? { reason } : {}),
-  };
-}
-
-const user = getUser() || {};
-
-function mockConvention(index, values) {
-  return {
-    conventionId: `responsable-convention-${index}`,
-    studentId: `student-${index}`,
-    companyId: `company-${index}`,
-    offerId: `offer-${index}`,
-    etab: institution(),
-    state: values.state,
-    renderedText: values.renderedText,
-    templateVersion: 3,
-    pdfSha256: `pdf-hash-${index}`,
-    ...(values.finalSha256 ? { finalSha256: values.finalSha256 } : {}),
-    ...(values.approvedAt ? { approvedAt: values.approvedAt } : {}),
-    ...(values.noSupervisorEtab ? { noSupervisorEtab: values.noSupervisorEtab } : {}),
-    shortRef: `PFE-2026-${String(100 + index).padStart(4, "0")}`,
-    ...(values.currentActorId ? { currentActorId: values.currentActorId } : {}),
-    ...(values.stepSince ? { stepSince: values.stepSince } : {}),
-    ...(values.rejectionReason ? { rejectionReason: values.rejectionReason } : {}),
-    createdAt: values.createdAt || daysAgo(18 + index),
-    // NOT IN API YET
-    studentName: values.studentName,
-    // NOT IN API YET
-    companyName: values.companyName,
-    // NOT IN API YET
-    subjectTitle: values.subjectTitle,
-    // NOT IN API YET
-    supervisorName: values.supervisorName || null,
-    // NOT IN API YET
-    offerTitle: values.offerTitle || values.subjectTitle,
-    // NOT IN API YET
-    studentAddress: values.studentAddress || "12 avenue Habib Bourguiba, Tunis",
-    // NOT IN API YET
-    studentPhone: values.studentPhone || "+216 22 345 678",
-    // NOT IN API YET
-    specialty: values.specialty || "Génie logiciel",
-  };
-}
-
-let conventions = [
-  mockConvention(1, {
-    state: "SIGNED_COMPANY",
-    currentActorId: `RESP#${institution()}`,
-    stepSince: daysAgo(2),
-    studentName: "Amina Ben Salem",
-    companyName: "Atelier Numérique",
-    subjectTitle: "Plateforme de suivi des stages",
-  }),
-  mockConvention(2, {
-    state: "SIGNED_COMPANY",
-    currentActorId: `RESP#${institution()}`,
-    stepSince: daysAgo(7),
-    studentName: "Yassine Trabelsi",
-    companyName: "Logistique Horizon",
-    subjectTitle: "Optimisation des flux logistiques",
-  }),
-  mockConvention(3, {
-    state: "SIGNED_STUDENT",
-    currentActorId: "company-3",
-    stepSince: daysAgo(3),
-    studentName: "Nour Khediri",
-    companyName: "Sécurité Conseil",
-    subjectTitle: "Détection des anomalies",
-  }),
-  mockConvention(4, {
-    state: "SUBMITTED",
-    currentActorId: "student-4",
-    stepSince: daysAgo(8),
-    studentName: "Omar Dridi",
-    companyName: "DataVision",
-    subjectTitle: "Tableau de bord prédictif",
-  }),
-  mockConvention(5, {
-    state: "DRAFT",
-    studentName: "Lina Messaoud",
-    companyName: "FinTech Tunisie",
-    subjectTitle: "Sécurisation des paiements",
-    rejectionReason: "La durée du stage doit être corrigée.",
-  }),
-  mockConvention(6, {
-    state: "DRAFT",
-    studentName: "Mehdi Bouaziz",
-    companyName: "Cloud Services",
-    subjectTitle: "Automatisation cloud",
-  }),
-  mockConvention(7, {
-    state: "APPROVED",
-    noSupervisorEtab: institution(),
-    approvedAt: daysAgo(4),
-    finalSha256: "final-hash-7",
-    studentName: "Sara Gharbi",
-    companyName: "AgriTech",
-    subjectTitle: "Suivi agricole intelligent",
-  }),
-  mockConvention(8, {
-    state: "APPROVED",
-    noSupervisorEtab: institution(),
-    approvedAt: daysAgo(2),
-    finalSha256: "final-hash-8",
-    studentName: "Adam Jaziri",
-    companyName: "Industrie 4.0",
-    subjectTitle: "Supervision des équipements",
-  }),
-  mockConvention(9, {
-    state: "APPROVED",
-    approvedAt: daysAgo(1),
-    finalSha256: "final-hash-9",
-    studentName: "Ines Ayari",
-    companyName: "Santé Connectée",
-    subjectTitle: "Application de télésuivi",
-    supervisorName: "M. Karim Hadded",
-  }),
-].map((item) => {
-  const events = [
-    event(item.conventionId, daysAgo(14), "SUBMITTED", item.studentId, "ETU", "DRAFT", "SUBMITTED"),
-  ];
-  if (item.state === "SIGNED_COMPANY" || item.state === "SIGNED_STUDENT") {
-    events.push(event(item.conventionId, daysAgo(10), "SIGNED", item.studentId, "ETU", "SUBMITTED", "SIGNED_STUDENT"));
-  }
-  if (item.state === "SIGNED_COMPANY") {
-    events.push(event(item.conventionId, daysAgo(8), "SIGNED", item.companyId, "ENT", "SIGNED_STUDENT", "SIGNED_COMPANY"));
-  }
-  if (item.state === "DRAFT" && item.rejectionReason) {
-    events.push(event(item.conventionId, daysAgo(6), "REJECTED", `RESP#${institution()}`, "RESP", "SIGNED_COMPANY", "DRAFT", item.rejectionReason));
-  }
-  if (item.conventionId === "responsable-convention-6") {
-    events.push(event(item.conventionId, daysAgo(5), "MODIFIED", item.studentId, "ETU", "DRAFT", "DRAFT"));
-  }
-  if (item.state === "APPROVED") {
-    events.push(event(item.conventionId, item.approvedAt || daysAgo(1), "APPROVED", `RESP#${institution()}`, "RESP", "SIGNED_COMPANY", "APPROVED"));
-  }
-  return {
-    ...item,
-    renderedText: item.renderedText || `Convention PFE entre ${item.studentName}, ${item.companyName} et ${institution()} pour « ${item.subjectTitle} ».`,
-    events,
-  };
-});
-
-conventions.push({
-  ...mockConvention(0, {
-    state: "SUBMITTED",
-    currentActorId: "student-foreign",
-    stepSince: daysAgo(2),
-    studentName: "Étudiant étranger",
-    companyName: "Entreprise extérieure",
-    subjectTitle: "Convention hors établissement",
-  }),
-  conventionId: "responsable-convention-foreign",
-  etab: institution() === "ETAB1" ? "ETAB2" : "ETAB1",
-  events: [
-    event("responsable-convention-foreign", daysAgo(2), "SUBMITTED", "student-foreign", "ETU", "DRAFT", "SUBMITTED"),
-  ],
-});
-
-let template = {
-  etab: institution(),
-  version: 3,
-  text: "Convention de stage PFE\n\nÉtablissement : {{etab}}\nÉtudiant : {{student}}\nEntreprise : {{company}}\nSujet : {{subject}}\nDébut : {{startDate}}\nFin : {{endDate}}\nDurée : {{durationWeeks}} semaines",
-  createdAt: daysAgo(45),
-};
 
 let deadlineSettings = {
   deadline: dateOnlyAhead(90),
@@ -318,12 +157,13 @@ export async function updateMe(partial) {
 }
 
 export async function listConventions({ withoutSupervisor = false, limit = 100, cursor } = {}) {
-  let items = conventions.filter((item) => item.etab === institution());
+  let items = await listStoredConventions();
   if (withoutSupervisor) {
-    items = items.filter((item) => item.state === "APPROVED" && item.noSupervisorEtab === institution());
-  } else {
-    // The default responsible queue includes the institution conventions.
+    items = items.filter(
+      (item) => item.state === "APPROVED" && item.noSupervisorEtab === item.etab,
+    );
   }
+  items = items.map(toConventionView);
   const safeLimit = Number(limit) > 0 ? Number(limit) : 100;
   const start = cursor ? Math.max(0, Number(cursor) || 0) : 0;
   const page = items.slice(start, start + safeLimit);
@@ -335,12 +175,7 @@ export async function listConventions({ withoutSupervisor = false, limit = 100, 
 }
 
 export async function getConvention(conventionId) {
-  const item = conventions.find((convention) => convention.conventionId === conventionId);
-  if (!item) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (item.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
-  }
-  return wait(item);
+  return wait(toConventionView(await getStoredConvention(conventionId)));
 }
 
 export async function listNotifications({ limit = 100, cursor } = {}) {
@@ -364,7 +199,7 @@ export function isBlocked(convention) {
   return Date.now() - new Date(convention.stepSince).getTime() > 5 * 24 * 60 * 60 * 1000;
 }
 
-export function getToSignConventions(items = conventions) {
+export function getToSignConventions(items = []) {
   return items.filter(
     (item) =>
       item.etab === institution() &&
@@ -373,20 +208,20 @@ export function getToSignConventions(items = conventions) {
   );
 }
 
-export function getConventionsToSignCount(items = conventions) {
+export function getConventionsToSignCount(items = []) {
   return getToSignConventions(items).length;
 }
 
-export function getWithoutSupervisorConventions(items = conventions) {
+export function getWithoutSupervisorConventions(items = []) {
   return items.filter(
     (item) =>
       item.etab === institution() &&
       item.state === "APPROVED" &&
-      item.noSupervisorEtab === institution(),
+      item.noSupervisorEtab === item.etab,
   );
 }
 
-export function getWithoutSupervisorCount(items = conventions) {
+export function getWithoutSupervisorCount(items = []) {
   return getWithoutSupervisorConventions(items).length;
 }
 
@@ -400,23 +235,23 @@ export function getAssignedSupervisorCount() {
   return getAssignedSupervisions().length;
 }
 
-export function getBlockedConventions(items = conventions) {
+export function getBlockedConventions(items = []) {
   return items.filter((item) => item.etab === institution() && isBlocked(item));
 }
 
-export function getBlockedCount(items = conventions) {
+export function getBlockedCount(items = []) {
   return getBlockedConventions(items).length;
 }
 
-export function getDraftConventions(items = conventions) {
+export function getDraftConventions(items = []) {
   return items.filter((item) => item.etab === institution() && item.state === "DRAFT");
 }
 
-export function getDraftCount(items = conventions) {
+export function getDraftCount(items = []) {
   return getDraftConventions(items).length;
 }
 
-export function getInProgressConventions(items = conventions) {
+export function getInProgressConventions(items = []) {
   return items.filter(
     (item) =>
       item.etab === institution() &&
@@ -424,22 +259,61 @@ export function getInProgressConventions(items = conventions) {
   );
 }
 
-export function getInProgressCount(items = conventions) {
+export function getInProgressCount(items = []) {
   return getInProgressConventions(items).length;
 }
 
-export function getApprovedConventions(items = conventions) {
+export function getApprovedConventions(items = []) {
   return items.filter(
     (item) => item.etab === institution() && item.state === "APPROVED",
   );
 }
 
-export function getApprovedCount(items = conventions) {
+export function getApprovedCount(items = []) {
   return getApprovedConventions(items).length;
 }
 
 export async function getConventionTemplate() {
-  return wait({ ...template });
+  const template = await getStoredTemplate();
+  const bindingPlaceholders = {
+    "institution.name": "{{etab}}",
+    "student.fullName": "{{student}}",
+    "company.name": "{{company}}",
+    "offer.title": "{{subject}}",
+    "offer.durationWeeks": "{{durationWeeks}}",
+  };
+  const text =
+    template.legacyText ||
+    [
+      ...template.header.lines,
+      "",
+      template.title,
+      ...template.sections.flatMap((section) => [
+        "",
+        section.title,
+        ...section.fields.map((field) => {
+          const value =
+            field.source === "AUTO"
+              ? bindingPlaceholders[field.binding] || field.label
+              : field.source === "STATIC"
+                ? field.value
+                : field.key === "internshipStartDate"
+                  ? "{{startDate}}"
+                  : field.key === "internshipEndDate"
+                    ? "{{endDate}}"
+                    : field.label;
+          return `${field.label} : ${value}`;
+        }),
+      ]),
+      "",
+      ...template.articles.flatMap((article) => [article.title, article.text]),
+    ].join("\n");
+  return wait({
+    etab: template.etab,
+    version: template.version,
+    text,
+    createdAt: template.createdAt,
+  });
 }
 
 export async function putConventionTemplate({ text } = {}) {
@@ -452,14 +326,19 @@ export async function putConventionTemplate({ text } = {}) {
       { fields: ["text"] },
     );
   }
-  template = {
-    ...template,
-    version: template.version + 1,
-    text: normalized,
-    createdAt: new Date().toISOString(),
-  };
+  const currentTemplate = await getStoredTemplate();
+  const template = await putStoredTemplate({
+    ...currentTemplate,
+    // NOT IN API YET: preserve the old text-editor payload while the UI migrates to structured fields.
+    legacyText: normalized,
+  });
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ ...template });
+  return wait({
+    etab: template.etab,
+    version: template.version,
+    text: normalized,
+    createdAt: template.createdAt,
+  });
 }
 
 export async function updateConventionTemplate(text) {
@@ -528,7 +407,9 @@ export async function listTeachers({ expertise, limit = 100, cursor } = {}) {
 }
 
 export async function assignSupervisor(studentId, teacherId) {
-  const convention = conventions.find((item) => item.studentId === studentId);
+  const convention = (await listStoredConventions()).find(
+    (item) => item.studentId === studentId,
+  );
   const teacher = teachers.find((item) => item.userId === teacherId);
   if (!teacher) {
     return mockError(404, "NOT_FOUND", "Enseignant introuvable.");
@@ -549,8 +430,10 @@ export async function assignSupervisor(studentId, teacherId) {
   ) {
     return mockError(409, "CONFLICT", "Cet étudiant possède déjà un encadrement.");
   }
-  convention.noSupervisorEtab = undefined;
-  convention.supervisorName = `${teacher.firstName} ${teacher.lastName}`;
+  const updatedConvention = await assignConventionSupervisor(
+    convention.conventionId,
+    teacher,
+  );
   const timestamp = new Date().toISOString();
   const supervision = {
     studentId,
@@ -577,7 +460,7 @@ export async function assignSupervisor(studentId, teacherId) {
       createdAt: timestamp,
       type: "SUPERVISION",
       title: "Nouvelle affectation",
-      body: `${convention.studentName} vous a été affecté comme étudiant encadré.`,
+      body: `${toConventionView(updatedConvention).studentName} vous a été affecté comme étudiant encadré.`,
       refType: "SUPERVISION",
       refId: studentId,
       read: false,
@@ -588,181 +471,59 @@ export async function assignSupervisor(studentId, teacherId) {
 }
 
 export async function signConvention(conventionId) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
-  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (convention.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
-  }
-  if (convention.state !== "SIGNED_COMPANY") {
-    return mockError(409, "CONFLICT", "Cette convention n’est pas en attente de votre signature.");
-  }
-  if (convention.currentActorId !== `RESP#${institution()}`) {
-    return mockError(409, "CONFLICT", "Ce n’est pas le tour du responsable.");
-  }
-  const timestamp = new Date().toISOString();
-  convention.state = "APPROVED";
-  convention.approvedAt = timestamp;
-  convention.noSupervisorEtab = institution();
-  convention.finalSha256 = `final-hash-${convention.conventionId}`;
-  convention.events.push(event(
-    conventionId,
-    timestamp,
-    "APPROVED",
-    `RESP#${institution()}`,
-    "RESP",
-    "SIGNED_COMPANY",
-    "APPROVED",
-  ));
-  convention.currentActorId = undefined;
-  convention.stepSince = undefined;
-  notifications.unshift(
-    {
-      id: `notif-sign-${conventionId}-${Date.now()}`,
-      createdAt: timestamp,
-      type: "CONVENTION",
-      title: "Convention approuvée",
-      body: `La convention de ${convention.studentName} a été approuvée.`,
-      refType: "CONVENTION",
-      refId: conventionId,
-      read: false,
-    },
-    {
-      id: `notif-sign-company-${conventionId}-${Date.now()}`,
-      createdAt: timestamp,
-      type: "CONVENTION",
-      title: "Convention approuvée",
-      body: `La convention pour ${convention.companyName} est approuvée.`,
-      refType: "CONVENTION",
-      refId: conventionId,
-      read: false,
-    },
-  );
+  const updated = await signStoredConvention(conventionId);
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ ...convention });
+  return wait(toConventionView(updated));
 }
 
 export async function rejectConvention(conventionId, { reason } = {}) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
-  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (convention.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
-  }
-  const normalizedReason = String(reason ?? "").trim();
-  if (!normalizedReason || normalizedReason.length > 1000) {
-    return mockError(
-      400,
-      "VALIDATION_ERROR",
-      "Le motif doit contenir de 1 à 1 000 caractères.",
-      { fields: ["reason"] },
-    );
-  }
-  if (!["SUBMITTED", "SIGNED_STUDENT", "SIGNED_COMPANY"].includes(convention.state)) {
-    return mockError(409, "CONFLICT", "Cette convention ne peut plus être refusée.");
-  }
-  const previousState = convention.state;
-  const timestamp = new Date().toISOString();
-  convention.events = convention.events.map((eventItem) =>
-    eventItem.type === "SIGNED"
-      ? { ...eventItem, invalidated: true }
-      : eventItem,
-  );
-  convention.state = "DRAFT";
-  convention.currentActorId = `RESP#${institution()}`;
-  convention.stepSince = timestamp;
-  convention.rejectionReason = normalizedReason;
-  convention.finalSha256 = undefined;
-  convention.approvedAt = undefined;
-  convention.events.push(event(
-    conventionId,
-    timestamp,
-    "REJECTED",
-    `RESP#${institution()}`,
-    "RESP",
-    previousState,
-    "DRAFT",
-    normalizedReason,
-  ));
+  const updated = await rejectStoredConvention(conventionId, { reason });
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ ...convention });
+  return wait(toConventionView(updated));
 }
 
 export async function correctConvention(conventionId, input = {}) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
-  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (convention.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
+  const correction =
+    typeof input === "string" ? { renderedText: input } : input || {};
+  let structured = correction;
+  if (correction.renderedText !== undefined) {
+    const convention = await getStoredConvention(conventionId);
+    const articles = [...convention.templateSnapshot.articles];
+    if (articles.length) {
+      articles[0] = {
+        ...articles[0],
+        text: String(correction.renderedText ?? ""),
+      };
+    } else {
+      articles.push({
+        id: "article-corrected",
+        title: "Texte corrigé",
+        text: String(correction.renderedText ?? ""),
+      });
+    }
+    structured = {
+      staticValues: correction.staticValues || {},
+      articles,
+    };
   }
-  const renderedText =
-    typeof input === "string" ? input : String(input.renderedText ?? "");
-  if (convention.state !== "DRAFT") {
-    return mockError(409, "CONFLICT", "Cette convention n’est pas un brouillon.");
-  }
-  if (!renderedText.trim()) {
-    return mockError(
-      400,
-      "VALIDATION_ERROR",
-      "Le texte de la convention est requis.",
-      { fields: ["renderedText"] },
-    );
-  }
-  const oldHash = convention.pdfSha256;
-  const nextHash = await getConventionTextHash(renderedText);
-  convention.renderedText = renderedText;
-  convention.templateVersion = template.version;
-  convention.pdfSha256 = nextHash;
-  const timestamp = new Date().toISOString();
-  convention.events.push(event(
-    conventionId,
-    timestamp,
-    "MODIFIED",
-    `RESP#${institution()}`,
-    "RESP",
-    "DRAFT",
-    "DRAFT",
-  ));
-  convention.events[convention.events.length - 1].oldHash = oldHash;
-  convention.events[convention.events.length - 1].newHash = nextHash;
+  const updated = await correctStoredConvention(conventionId, structured);
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ ...convention });
+  return wait(toConventionView(updated));
 }
 
 export async function resubmitConvention(conventionId) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
-  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (convention.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
-  }
-  if (convention.state !== "DRAFT") {
-    return mockError(409, "CONFLICT", "Cette convention n’est pas un brouillon.");
-  }
-  const timestamp = new Date().toISOString();
-  convention.state = "SUBMITTED";
-  convention.currentActorId = convention.studentId;
-  convention.stepSince = timestamp;
-  convention.rejectionReason = undefined;
-  convention.events.push(event(
-    conventionId,
-    timestamp,
-    "RESUBMITTED",
-    `RESP#${institution()}`,
-    "RESP",
-    "DRAFT",
-    "SUBMITTED",
-  ));
+  const updated = await resubmitStoredConvention(conventionId);
   window.dispatchEvent(new Event(RESPONSABLE_DATA_CHANGED_EVENT));
-  return wait({ ...convention });
+  return wait(toConventionView(updated));
 }
 
 export async function getConventionPdfUrl(conventionId) {
-  const convention = conventions.find((item) => item.conventionId === conventionId);
-  if (!convention) return mockError(404, "NOT_FOUND", "Convention introuvable.");
-  if (convention.etab !== institution()) {
-    return mockError(403, "FORBIDDEN", "Cette convention appartient à un autre établissement.");
-  }
+  const convention = await getConvention(conventionId);
   const lines = [
-    "CONVENTION DE STAGE",
+    "CONVENTION DE STAGE PFE",
     convention.shortRef,
     ...String(convention.renderedText || "").split(/\r?\n/).slice(0, 6),
+    `Empreinte : ${convention.pdfSha256}`,
   ];
   const pdf = `%PDF-1.4\n${lines.join("\n")}\n%%EOF`;
   const url = `data:application/pdf;charset=utf-8,${encodeURIComponent(pdf)}`;

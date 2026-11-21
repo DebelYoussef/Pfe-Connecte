@@ -6,7 +6,6 @@ import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import Skeleton from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
-import { getUser } from "../../auth";
 import {
   getApprovedCount,
   getBlockedCount,
@@ -36,9 +35,9 @@ function formatDaysSince(value) {
 
 function waitingFor(convention) {
   if (convention.state === "APPROVED") return "—";
-  if (convention.currentActorId === `RESP#${getUser()?.etab}`) return "Vous";
-  if (String(convention.currentActorId || "").startsWith("student-")) return "Étudiant";
-  if (String(convention.currentActorId || "").startsWith("company-")) return "Entreprise";
+  if (convention.currentActorId === `RESP#${convention.etab}`) return "Vous";
+  if (convention.currentActorId === convention.studentId) return "Étudiant";
+  if (convention.currentActorId === convention.companyId) return "Entreprise";
   if (String(convention.currentActorId || "").startsWith("RESP#")) return "Responsable";
   return "Étudiant";
 }
@@ -104,7 +103,7 @@ export default function ResponsableConventions() {
     const query = search.trim().toLocaleLowerCase("fr");
     return items.filter((item) => {
       let tabMatch = true;
-      if (filter === "TO_SIGN") tabMatch = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${getUser()?.etab}`;
+      if (filter === "TO_SIGN") tabMatch = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${item.etab}`;
       if (filter === "DRAFT") tabMatch = item.state === "DRAFT";
       if (filter === "IN_PROGRESS") tabMatch = ["SUBMITTED", "SIGNED_STUDENT"].includes(item.state);
       if (filter === "BLOCKED") tabMatch = isBlocked(item);
@@ -199,7 +198,7 @@ export default function ResponsableConventions() {
             {visible.map((item) => {
               const blocked = isBlocked(item);
               const daysLabel = formatDaysSince(item.stepSince);
-              const toSign = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${getUser()?.etab}`;
+              const toSign = item.state === "SIGNED_COMPANY" && item.currentActorId === `RESP#${item.etab}`;
               return (
                 <article key={item.conventionId}>
                   <span className="responsable-student-avatar" aria-hidden="true">

@@ -13,8 +13,6 @@ import StatusBadge from "../../components/ui/StatusBadge";
 import Toast from "../../components/ui/Toast";
 import Tooltip from "../../components/ui/Tooltip";
 import useUnsavedWarning from "../student/parts/useUnsavedWarning";
-import { getUser } from "../../auth";
-import { getConventionTextHash } from "../../services";
 import {
   correctConvention,
   getConvention,
@@ -60,7 +58,6 @@ export default function ResponsableConventionDetail() {
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  const [integrityHash, setIntegrityHash] = useState("");
   const [toast, setToast] = useState("");
   const [correctionSaved, setCorrectionSaved] = useState(false);
 
@@ -82,15 +79,6 @@ export default function ResponsableConventionDetail() {
 
   useEffect(() => { void load(); }, [conventionId]);
 
-  useEffect(() => {
-    if (!convention?.renderedText) return undefined;
-    let active = true;
-    getConventionTextHash(convention.renderedText)
-      .then((hash) => active && setIntegrityHash(hash))
-      .catch(() => active && setIntegrityHash(""));
-    return () => { active = false; };
-  }, [convention?.renderedText]);
-
   const dirty = Boolean(convention?.state === "DRAFT" && text !== convention.renderedText);
   useUnsavedWarning(dirty);
 
@@ -108,18 +96,15 @@ export default function ResponsableConventionDetail() {
   ], [convention?.state]);
   const waitingFor = useMemo(() => {
     if (!convention || convention.state === "APPROVED") return undefined;
-    if (convention.currentActorId === `RESP#${getUser()?.etab}`) return "Vous";
-    if (String(convention.currentActorId || "").startsWith("student-")) return "Étudiant";
-    if (String(convention.currentActorId || "").startsWith("company-")) return "Entreprise";
+    if (convention.currentActorId === `RESP#${convention.etab}`) return "Vous";
+    if (convention.currentActorId === convention.studentId) return "Étudiant";
+    if (convention.currentActorId === convention.companyId) return "Entreprise";
     return "Responsable";
   }, [convention]);
   const toSign =
     convention?.state === "SIGNED_COMPANY" &&
-    convention.currentActorId === `RESP#${getUser()?.etab}`;
+    convention.currentActorId === `RESP#${convention.etab}`;
   const canReject = REJECTABLE_STATES.includes(convention?.state);
-  const integrityVerified = Boolean(
-    integrityHash && integrityHash === convention?.pdfSha256,
-  );
   const modificationEvent = [...events]
     .reverse()
     .find((eventItem) => eventItem.type === "MODIFIED" && !eventItem.invalidated);
@@ -250,8 +235,7 @@ export default function ResponsableConventionDetail() {
     );
   }
 
-  const institutionName =
-    getUser()?.etab === "ETAB2" ? "Institut B" : "Institut A";
+  const institutionName = convention.etabName || "—";
   const resubmitEnabled =
     convention.state === "DRAFT" && (!dirty || correctionSaved);
 
@@ -324,9 +308,6 @@ export default function ResponsableConventionDetail() {
           ) : (
             <ConventionDocument
               convention={convention}
-              integrityVerified={integrityVerified}
-              integrityHash={integrityHash}
-              onCopy={copyValue}
             />
           )}
           <div className="document-actions convention-action-bar">
