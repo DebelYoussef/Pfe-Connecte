@@ -410,6 +410,27 @@ export async function getMyConvention() {
   const conventions = await listMockConventions();
   return wait(conventions[0] ? toConventionView(conventions[0]) : null);
 }
+
+// NOT IN API YET: structured convention forms use the shared browser store.
+export async function saveConventionFields(values) {
+  const current = await getMyConvention();
+  if (!current) {
+    throw {
+      status: 404,
+      code: "NOT_FOUND",
+      message: "Convention introuvable.",
+      details: {},
+    };
+  }
+  const updated = await saveFields(current.conventionId, values);
+  return toConventionView(updated);
+}
+
+export async function requestStudentConventionModification(conventionId) {
+  const updated = await requestModification(conventionId);
+  return toConventionView(updated);
+}
+
 export async function saveConventionStudentInfo(
   fields,
   { allowAfterSignature = false } = {},

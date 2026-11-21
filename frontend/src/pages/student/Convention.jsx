@@ -1,291 +1,885 @@
-import { Download, Lock, XCircle } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import ErrorBanner from '../../components/ErrorBanner'
-import PageHeader from '../../components/ui/PageHeader'
-import LockedPage from '../../components/LockedPage'
-import StatusBadge from '../../components/ui/StatusBadge'
-import ConfirmDialog from '../../components/ui/ConfirmDialog'
-import Toast from '../../components/ui/Toast'
-import Tooltip from '../../components/ui/Tooltip'
-import ConventionDocument from '../../components/convention/ConventionDocument'
-import ConventionTracker from '../../components/convention/ConventionTracker'
-import ConventionTimeline from '../../components/convention/ConventionTimeline'
-import VerificationCard from '../../components/convention/VerificationCard'
-import { getUser } from '../../auth'
-import { etabName } from '../../lib/conventionDocument'
-import { getConventionPdfUrl, getMe, getMyConvention, saveConventionStudentInfo, signConvention } from '../../services'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Lock,
+  Printer,
+  UserRound,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import ConventionDocument from "../../components/convention/ConventionDocument";
+import ConventionTimeline from "../../components/convention/ConventionTimeline";
+import ConventionTracker from "../../components/convention/ConventionTracker";
+import VerificationCard from "../../components/convention/VerificationCard";
+import ErrorBanner from "../../components/ErrorBanner";
+import LockedPage from "../../components/LockedPage";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import PageHeader from "../../components/ui/PageHeader";
+import Skeleton from "../../components/ui/Skeleton";
+import StatusBadge from "../../components/ui/StatusBadge";
+import Toast from "../../components/ui/Toast";
+import Tooltip from "../../components/ui/Tooltip";
+import {
+  computeCompletion,
+  validateField,
+} from "../../lib/conventionDocument";
+import {
+  getConventionPdfUrl,
+  getMyConvention,
+  requestStudentConventionModification,
+  saveConventionFields,
+  signConvention,
+} from "../../services";
 
 const trackerSteps = [
-  { label: 'Étudiant', actorRole: 'ETU' },
-  { label: 'Entreprise', actorRole: 'ENT' },
-  { label: 'Responsable', actorRole: 'RESP' },
-  { label: 'Approuvée', actorRole: null },
-]
-const phonePattern = /^\+216 \d{2} \d{3} \d{3}$/
-const roleLabels = { ETU: 'l’étudiant', ENT: 'l’entreprise', RESP: 'le responsable' }
+  { actorRole: "ETU" },
+  { actorRole: "ENT" },
+  { actorRole: "RESP" },
+];
 
-function formatDate(value, options = { dateStyle: 'medium' }) {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('fr-FR', options).format(date)
+function isPresent(value) {
+  return String(value ?? "").trim().length > 0;
 }
 
-function getSignatureEvents(convention) {
-  const events = convention.events ?? []
-  const lastModificationIndex = events.map((event) => event.type).lastIndexOf('MODIFIED')
-  return events.slice(lastModificationIndex + 1).filter((event) => !event.invalidated)
+function getPartyProgress(snapshot, values, source) {
+  const fields = (snapshot?.sections || []).flatMap((section) =>
+    (section.fields || []).filter((field) => field.source === source),
+  );
+  return {
+    done: fields.filter((field) => isPresent(values?.[field.key])).length,
+    total: fields.length,
+  };
 }
 
-function getStudentTurnMessage(convention, signatureEvents) {
-  if (convention.state === 'APPROVED') return 'La convention est déjà approuvée.'
-  if (convention.state === 'DRAFT') return 'En attente du renvoi par le responsable.'
-  if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ETU')) return 'En attente de la signature de l’entreprise.'
-  if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ENT')) return 'En attente de la signature du responsable.'
-  if (signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'RESP')) return 'En attente de l’approbation du responsable.'
-  if (convention.currentActorId === convention.studentId) return 'C’est au tour de l’étudiant.'
-  if (convention.currentActorId === convention.companyId) return 'C’est au tour de l’entreprise.'
-  const role = String(convention.currentActorId ?? '').split('#')[0]
-  return roleLabels[role] ? `C’est au tour de ${roleLabels[role]}.` : 'La signature n’est pas disponible à cette étape.'
+function getMissingRequired(snapshot, values, source) {
+  return (snapshot?.sections || []).flatMap((section) =>
+    (section.fields || [])
+      .filter(
+        (field) =>
+          field.source === source &&
+          field.required &&
+          !isPresent(values?.[field.key]),
+      )
+      .map((field) => field.label),
+  );
 }
 
-function getProfileValue(profile, session, key) {
-  return session[key] || profile[key] || '—'
+function getWaitingFor(convention) {
+  if (convention.state === "APPROVED") return "";
+  if (convention.state === "DRAFT") return "le responsable";
+  if (convention.currentActorId === convention.studentId) return "vous";
+  if (convention.currentActorId === convention.companyId) return "l’entreprise";
+  if (String(convention.currentActorId || "").startsWith("RESP#")) {
+    return "le responsable";
+  }
+  return "";
+}
+
+function getActiveSignatureEvents(convention) {
+  const events = convention?.events || [];
+  const circuitRestart = events.reduce(
+    (lastIndex, event, index) =>
+      ["MODIFIED", "REJECTED", "RESUBMITTED"].includes(event.type)
+        ? index
+        : lastIndex,
+    -1,
+  );
+  return events
+    .slice(circuitRestart + 1)
+    .filter((event) => event.type === "SIGNED" && !event.invalidated);
+}
+
+function formatFieldValue(value) {
+  return String(value ?? "");
+}
+
+function FieldInput({
+  field,
+  value,
+  disabled,
+  message,
+  touched,
+  onChange,
+  onBlur,
+}) {
+  const controlId = `convention-field-${field.key}`;
+  const commonProps = {
+    id: controlId,
+    name: field.key,
+    value: formatFieldValue(value),
+    required: field.required,
+    placeholder: field.placeholder || "",
+    "aria-invalid": Boolean(touched && message),
+    "aria-describedby": [
+      field.helpText ? `${controlId}-help` : "",
+      touched && message ? `${controlId}-error` : "",
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined,
+    onChange: (event) => onChange(field, event.target.value),
+    onBlur: () => onBlur(field),
+    disabled,
+  };
+
+  return (
+    <label className="convention-field" htmlFor={controlId}>
+      <span className="convention-field-label">
+        {field.label}
+        {field.required && <b aria-hidden="true"> *</b>}
+        {field.sensitive && (
+          <small className="sensitive-field-note">
+            Facultatif · confidentiel
+          </small>
+        )}
+      </span>
+      {field.type === "textarea" ? (
+        <textarea {...commonProps} rows={3} />
+      ) : (
+        <input
+          {...commonProps}
+          type={
+            field.type === "phone"
+              ? "tel"
+              : ["date", "email", "number"].includes(field.type)
+                ? field.type
+                : "text"
+          }
+          inputMode={field.type === "phone" ? "tel" : undefined}
+        />
+      )}
+      {field.helpText && (
+        <small className="field-help" id={`${controlId}-help`}>
+          {field.helpText}
+        </small>
+      )}
+      {touched && message && (
+        <small
+          className="field-error"
+          id={`${controlId}-error`}
+          role="alert"
+        >
+          {message}
+        </small>
+      )}
+    </label>
+  );
 }
 
 export default function Convention() {
-  const [convention, setConvention] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [draft, setDraft] = useState({ studentAddress: '', studentPhone: '' })
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [fieldErrors, setFieldErrors] = useState({})
-  const [touched, setTouched] = useState({})
-  const [submitted, setSubmitted] = useState(false)
-  const [signDialogOpen, setSignDialogOpen] = useState(false)
-  const [modificationDialogOpen, setModificationDialogOpen] = useState(false)
-  const [editingAfterSignature, setEditingAfterSignature] = useState(false)
-  const [signatureAcknowledged, setSignatureAcknowledged] = useState(false)
-  const [toast, setToast] = useState('')
+  const [convention, setConvention] = useState(null);
+  const [draftValues, setDraftValues] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [modifying, setModifying] = useState(false);
+  const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [signDialogOpen, setSignDialogOpen] = useState(false);
+  const [modificationDialogOpen, setModificationDialogOpen] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const loadConvention = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const nextConvention = await getMyConvention();
+      setConvention(nextConvention);
+      setDraftValues(nextConvention?.values || {});
+      setFieldErrors({});
+      setTouched({});
+      setSubmitted(false);
+    } catch (loadError) {
+      setError({
+        title: "Impossible de charger la convention",
+        message: loadError?.message || "Veuillez réessayer.",
+        action: "load",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true
-    Promise.all([getMyConvention(), getMe()])
-      .then(([nextConvention, nextProfile]) => {
-        if (!active) return
-        const session = getUser() ?? {}
-        const mergedProfile = {
-          ...nextProfile,
-          ...session,
-          firstName: session.firstName || nextProfile.firstName,
-          lastName: session.lastName || nextProfile.lastName,
-          email: session.email || nextProfile.email,
-          etab: session.etab || nextProfile.etab,
-          department: session.department || nextProfile.department,
-          specialty: session.specialty || nextProfile.specialty,
-        }
-        setConvention(nextConvention)
-        setProfile(mergedProfile)
-        setDraft({
-          studentAddress: nextConvention?.studentAddress ?? '',
-          studentPhone: nextConvention?.studentPhone ?? '',
-        })
+    let active = true;
+    getMyConvention()
+      .then((nextConvention) => {
+        if (!active) return;
+        setConvention(nextConvention);
+        setDraftValues(nextConvention?.values || {});
       })
-      .catch((loadError) => setError(loadError.message || 'Impossible de charger la convention.'))
-      .finally(() => active && setLoading(false))
-    return () => { active = false }
-  }, [])
+      .catch((loadError) => {
+        if (!active) return;
+        setError({
+          title: "Impossible de charger la convention",
+          message: loadError?.message || "Veuillez réessayer.",
+          action: "load",
+        });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const signatureEvents = useMemo(() => convention ? getSignatureEvents(convention) : [], [convention])
-  const hasSignature = convention?.state === 'APPROVED' || signatureEvents.some((event) => event.type === 'SIGNED')
-  const editableWithoutSignature = convention?.state === 'DRAFT'
-    || (convention?.state === 'SUBMITTED' && !hasSignature)
-  const informationEditable = Boolean(editableWithoutSignature || (hasSignature && editingAfterSignature))
-  const canSign = convention?.state === 'SUBMITTED'
-    && !signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === 'ETU')
-  const studentName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.name || '—'
-  const validation = useMemo(() => ({
-    studentAddress: draft.studentAddress.trim() ? '' : 'L’adresse est requise.',
-    studentPhone: !draft.studentPhone.trim()
-      ? 'Le téléphone est requis.'
-      : phonePattern.test(draft.studentPhone.trim())
-        ? ''
-        : 'Format attendu : +216 22 345 678.',
-  }), [draft])
+  const snapshot = convention?.templateSnapshot;
+  const studentFields = useMemo(
+    () =>
+      (snapshot?.sections || []).flatMap((section) =>
+        (section.fields || []).filter((field) => field.source === "STUDENT"),
+      ),
+    [snapshot],
+  );
+  const dirtyFields = useMemo(
+    () =>
+      studentFields.filter(
+        (field) =>
+          String(draftValues[field.key] ?? "") !==
+          String(convention?.values?.[field.key] ?? ""),
+      ),
+    [studentFields, draftValues, convention?.values],
+  );
+  const dirty = dirtyFields.length > 0;
+  const signatureEvents = getActiveSignatureEvents(convention);
+  const hasSignature = Boolean(
+    convention &&
+      (convention.state === "APPROVED" ||
+        convention.frozenHash ||
+        convention.signatures?.length),
+  );
+  const informationEditable = Boolean(convention && !hasSignature);
+  const liveCompletion = useMemo(
+    () => computeCompletion(snapshot, draftValues),
+    [snapshot, draftValues],
+  );
+  const studentProgress = useMemo(
+    () => getPartyProgress(snapshot, draftValues, "STUDENT"),
+    [snapshot, draftValues],
+  );
+  const companyProgress = useMemo(
+    () => getPartyProgress(snapshot, draftValues, "COMPANY"),
+    [snapshot, draftValues],
+  );
+  const studentMissing = useMemo(
+    () => getMissingRequired(snapshot, draftValues, "STUDENT"),
+    [snapshot, draftValues],
+  );
+  const companyMissing = useMemo(
+    () => getMissingRequired(snapshot, draftValues, "COMPANY"),
+    [snapshot, draftValues],
+  );
+  const studentTurn = Boolean(
+    convention?.state === "SUBMITTED" &&
+      convention.currentActorId === convention.studentId &&
+      !signatureEvents.some((event) => event.actorRole === "ETU"),
+  );
+  const canSign = Boolean(
+    studentTurn && liveCompletion.complete && !dirty && !saving && !signing,
+  );
+  const turnMessage = useMemo(() => {
+    if (!convention) return "";
+    if (dirty) return "Enregistrez vos modifications.";
+    if (saving) return "Enregistrement en cours.";
+    if (fieldErrors && Object.values(fieldErrors).some(Boolean)) {
+      return "Corrigez les champs signalés.";
+    }
+    if (studentMissing.length) {
+      return `Il manque : ${studentMissing.slice(0, 3).join(", ")}${studentMissing.length > 3 ? "…" : ""}`;
+    }
+    if (companyMissing.length) return "L’entreprise doit compléter sa partie.";
+    if (convention.state === "APPROVED") {
+      return "La convention est déjà approuvée.";
+    }
+    if (!studentTurn) {
+      const waitingFor = getWaitingFor(convention);
+      return waitingFor === "vous"
+        ? "La convention n’est pas encore prête à être signée."
+        : `En attente de ${waitingFor || "l’étape suivante"}.`;
+    }
+    if (signing) return "Signature en cours.";
+    return "";
+  }, [
+    convention,
+    dirty,
+    saving,
+    fieldErrors,
+    studentMissing,
+    companyMissing,
+    studentTurn,
+    signing,
+  ]);
+  const invalidChangedFields = useMemo(
+    () =>
+      dirtyFields.filter(
+        (field) =>
+          validateField(field, draftValues[field.key]) ||
+          fieldErrors[field.key],
+      ),
+    [dirtyFields, draftValues, fieldErrors],
+  );
+  const saveTooltip = !informationEditable
+    ? "Le document est verrouillé après une signature."
+    : saving
+      ? "Enregistrement en cours."
+      : invalidChangedFields.length
+        ? "Corrigez les champs signalés avant d’enregistrer."
+        : dirty
+          ? ""
+          : "Aucune modification à enregistrer.";
+  const saveDisabled =
+    !informationEditable || saving || !dirty || invalidChangedFields.length > 0;
 
-  function updateField(field, value) {
-    const next = { ...draft, [field]: value }
-    setDraft(next)
-    setTouched((current) => ({ ...current, [field]: true }))
-    setFieldErrors((current) => ({ ...current, [field]: field === 'studentAddress'
-      ? next.studentAddress.trim() ? '' : 'L’adresse est requise.'
-      : !next.studentPhone.trim() ? 'Le téléphone est requis.' : phonePattern.test(next.studentPhone.trim()) ? '' : 'Format attendu : +216 22 345 678.' }))
-  }
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const previewConvention = useMemo(() => {
+    if (!convention || !dirty) return convention;
+    return {
+      ...convention,
+      values: draftValues,
+      documentHash: "",
+      frozenHash: null,
+    };
+  }, [convention, dirty, draftValues]);
+  const events = useMemo(
+    () => {
+      const sourceEvents = convention?.events || [];
+      const circuitRestart = sourceEvents.reduce(
+        (lastIndex, event, index) =>
+          ["MODIFIED", "REJECTED", "RESUBMITTED"].includes(event.type)
+            ? index
+            : lastIndex,
+        -1,
+      );
+      return sourceEvents
+        .map((event, index) => ({
+          ...event,
+          invalidated:
+            event.invalidated ||
+            (index < circuitRestart && event.type === "SIGNED"),
+        }))
+        .sort(
+        (left, right) =>
+          new Date(left.timestamp).getTime() -
+          new Date(right.timestamp).getTime(),
+        );
+    },
+    [convention?.events],
+  );
+  const trackerDone = trackerSteps.map(
+    (step) =>
+      convention?.state === "APPROVED" ||
+      signatureEvents.some((event) => event.actorRole === step.actorRole),
+  );
+  const waitingFor = convention ? getWaitingFor(convention) : "";
+
+  const showToast = useCallback((message) => {
+    setToast(message);
+  }, []);
 
   async function copyValue(value, label) {
     try {
-      await navigator.clipboard.writeText(value)
-      setToast(`${label} copié`)
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copié.`);
     } catch {
-      setToast('Impossible de copier dans le presse-papiers.')
+      showToast("Impossible de copier dans le presse-papiers.");
     }
   }
 
-  async function saveInformation(event) {
-    event.preventDefault()
-    setSubmitted(true)
-    setTouched({ studentAddress: true, studentPhone: true })
-    setFieldErrors(validation)
-    if (Object.values(validation).some(Boolean)) return
+  function retryFailedAction() {
+    switch (error?.action) {
+      case "save":
+        return saveInformation();
+      case "sign":
+        return sign();
+      case "modify":
+        return requestModification();
+      case "download":
+        return download();
+      default:
+        return loadConvention();
+    }
+  }
 
-    setSaving(true)
-    setError('')
+  function updateField(field, value) {
+    setDraftValues((current) => ({ ...current, [field.key]: value }));
+    setTouched((current) => ({ ...current, [field.key]: true }));
+    setFieldErrors((current) => ({
+      ...current,
+      [field.key]: validateField(field, value) || "",
+    }));
+  }
+
+  function touchField(field) {
+    setTouched((current) => ({ ...current, [field.key]: true }));
+    setFieldErrors((current) => ({
+      ...current,
+      [field.key]: validateField(field, draftValues[field.key]) || "",
+    }));
+  }
+
+  async function saveInformation(event) {
+    event?.preventDefault();
+    setSubmitted(true);
+    const nextErrors = {};
+    for (const field of dirtyFields) {
+      const message = validateField(field, draftValues[field.key]);
+      if (message) nextErrors[field.key] = message;
+    }
+    setFieldErrors((current) => ({ ...current, ...nextErrors }));
+    setTouched((current) => ({
+      ...current,
+      ...Object.fromEntries(dirtyFields.map((field) => [field.key, true])),
+    }));
+    if (Object.keys(nextErrors).length) return;
+    if (!dirtyFields.length) return;
+
+    setSaving(true);
+    setError(null);
     try {
-      const result = await saveConventionStudentInfo(draft, { allowAfterSignature: editingAfterSignature })
-      setConvention(result.convention)
-      setDraft({ studentAddress: result.convention.studentAddress, studentPhone: result.convention.studentPhone })
-      setEditingAfterSignature(false)
-      setSubmitted(false)
-      setTouched({})
-      setFieldErrors({})
-      setToast(!result.changed
-        ? 'Aucune modification détectée'
-        : result.signaturesReset
-          ? 'Convention modifiée : les signatures ont été annulées.'
-          : 'Informations enregistrées et document régénéré.')
+      const values = Object.fromEntries(
+        dirtyFields.map((field) => [field.key, draftValues[field.key] ?? ""]),
+      );
+      const updated = await saveConventionFields(values);
+      setConvention(updated);
+      setDraftValues(updated.values || {});
+      setFieldErrors({});
+      setTouched({});
+      setSubmitted(false);
+      showToast("Vos informations ont été enregistrées.");
     } catch (saveError) {
-      setError(saveError.message || 'Impossible d’enregistrer les informations.')
+      const serverFields = saveError?.details?.messages || {};
+      if (Object.keys(serverFields).length) {
+        setFieldErrors((current) => ({ ...current, ...serverFields }));
+        setTouched((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            Object.keys(serverFields).map((key) => [key, true]),
+          ),
+        }));
+      }
+      setError({
+        title: "Impossible d’enregistrer vos informations",
+        message: saveError?.message || "Veuillez vérifier les champs et réessayer.",
+        action: "save",
+      });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   async function sign() {
+    if (!canSign) return;
+    setSigning(true);
+    setError(null);
     try {
-      const updated = await signConvention(convention.conventionId)
-      setConvention(updated)
-      setSignDialogOpen(false)
-      setSignatureAcknowledged(false)
-      setToast('Convention signée électroniquement.')
+      const updated = await signConvention(convention.conventionId);
+      setConvention(updated);
+      setDraftValues(updated.values || {});
+      setSignDialogOpen(false);
+      showToast("Convention signée électroniquement.");
     } catch (signError) {
-      setError(signError.message || 'Impossible de signer la convention.')
+      setError({
+        title: "Impossible de signer la convention",
+        message: signError?.message || "Veuillez réessayer.",
+        action: "sign",
+      });
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function requestModification() {
+    setModifying(true);
+    setError(null);
+    try {
+      const updated = await requestStudentConventionModification(
+        convention.conventionId,
+      );
+      setConvention(updated);
+      setDraftValues(updated.values || {});
+      setFieldErrors({});
+      setTouched({});
+      setModificationDialogOpen(false);
+      showToast("La convention repasse en brouillon. Les signatures ont été annulées.");
+    } catch (modificationError) {
+      setError({
+        title: "Impossible de demander une modification",
+        message: modificationError?.message || "Veuillez réessayer.",
+        action: "modify",
+      });
+    } finally {
+      setModifying(false);
     }
   }
 
   async function download() {
+    setError(null);
     try {
-      const result = await getConventionPdfUrl(convention.conventionId)
-      window.open(result.url, '_blank', 'noopener,noreferrer')
+      const result = await getConventionPdfUrl(convention.conventionId);
+      window.open(result.url, "_blank", "noopener,noreferrer");
     } catch (downloadError) {
-      setError(downloadError.message || 'Impossible de préparer le téléchargement.')
+      setError({
+        title: "Impossible de préparer le téléchargement",
+        message: downloadError?.message || "Veuillez réessayer.",
+        action: "download",
+      });
     }
   }
 
-  if (loading) return <div className="dashboard-skeleton"><span /><span /><span /></div>
-  if (!convention) return <LockedPage eyebrow="Document officiel" title="Ma convention de stage" requirements={[{ label: 'Confirmer un stage accepté', done: false }]} ctaLabel="Voir mes candidatures" ctaTo="/student/candidatures" preview={<div className="document-skeleton"><span /><span /><span /><span /></div>} />
+  if (loading) {
+    return (
+      <section className="student-page convention-page" aria-label="Chargement">
+        <Skeleton className="convention-skeleton-heading" />
+        <div className="student-convention-layout">
+          <div className="convention-loading-card">
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
+          </div>
+          <div className="convention-loading-card">
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
+            <Skeleton />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
-  const events = [...(convention.events ?? [])].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-  const trackerDone = trackerSteps.map((step, index) => convention.state === 'APPROVED'
-    || (index < 3 && signatureEvents.some((event) => event.type === 'SIGNED' && event.actorRole === step.actorRole)))
-  const canRequestModification = hasSignature && convention.state !== 'DRAFT' && !editingAfterSignature
-  const turnMessage = getStudentTurnMessage(convention, signatureEvents)
+  if (!convention) {
+    return (
+      <>
+        {error && (
+          <ErrorBanner
+            title={error.title}
+            message={error.message}
+            onRetry={retryFailedAction}
+          />
+        )}
+        <LockedPage
+          eyebrow="Document officiel"
+          title="Ma convention de stage"
+          requirements={[
+            { label: "Confirmer un stage accepté", done: false },
+          ]}
+          ctaLabel="Voir mes candidatures"
+          ctaTo="/student/candidatures"
+          preview={
+            <div className="document-skeleton">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          }
+        />
+      </>
+    );
+  }
 
+  const modifiedEvent = [...events]
+    .reverse()
+    .find((event) => event.type === "MODIFIED" && !event.invalidated);
+  const canRequestModification = hasSignature && convention.state !== "DRAFT";
   return (
     <section className="student-page convention-page">
-      <PageHeader eyebrow="Document officiel" title="Ma convention de stage" subtitle="Le document officiel de votre parcours." action={<StatusBadge status={convention.state} />} />
-      {convention.state === 'DRAFT' && events.some((event) => event.type === 'MODIFIED' && !event.invalidated) ? (
-        <div className="convention-modified-banner" role="alert">
-          <XCircle aria-hidden="true" size={18} />
-          <span>Convention modifiée : les signatures ont été annulées. En attente de renvoi par le responsable.</span>
+      <PageHeader
+        eyebrow="Document officiel"
+        title="Ma convention de stage"
+        subtitle="Complétez, vérifiez et suivez votre convention de stage."
+        action={<StatusBadge status={convention.state} />}
+      />
+      <ConventionTracker doneSteps={trackerDone} waitingFor={waitingFor} />
+
+      <section
+        className="convention-completion info-card"
+        aria-label="Complétude de la convention"
+      >
+        <div className="convention-section-heading">
+          <div>
+            <h3>Complétude</h3>
+            <p>Suivez l’avancement des deux parties de la convention.</p>
+          </div>
+          {dirty && (
+            <span className="unsaved-indicator">
+              <AlertCircle aria-hidden="true" size={15} />
+              Modifications non enregistrées
+            </span>
+          )}
         </div>
-      ) : convention.state === 'DRAFT' && convention.rejectionReason ? (
-        <div className="convention-rejected" role="alert"><strong>Convention refusée</strong><span>{convention.rejectionReason}</span><small>Le responsable corrige le texte, vous serez notifié lorsqu’elle sera renvoyée.</small></div>
-      ) : null}
+        <div className="completion-meters">
+          <CompletionMeter label="Étudiant" progress={studentProgress} />
+          <CompletionMeter label="Entreprise" progress={companyProgress} />
+        </div>
+      </section>
+
       {error && (
         <ErrorBanner
-          title="Impossible de charger ou d’enregistrer la convention"
-          message={error}
-          onRetry={() => window.location.reload()}
+          title={error.title}
+          message={error.message}
+          onRetry={retryFailedAction}
+          onClose={() => setError(null)}
         />
       )}
-      <ConventionTracker doneSteps={trackerDone} />
-      <div className="convention-grid">
+      {convention.state === "DRAFT" && convention.rejectionReason && (
+        <div className="convention-rejected" role="alert">
+          <strong>Convention refusée</strong>
+          <span>{convention.rejectionReason}</span>
+          <small>
+            Le responsable doit corriger le document avant son renvoi.
+          </small>
+        </div>
+      )}
+      {convention.state === "DRAFT" && modifiedEvent && (
+        <div className="convention-modified-banner" role="status">
+          <Lock aria-hidden="true" size={18} />
+          <span>
+            Les signatures ont été annulées. La convention est en brouillon et
+            attend le responsable.
+          </span>
+        </div>
+      )}
+      {convention.state === "SIGNED_STUDENT" && (
+        <div className="convention-state-banner" role="status">
+          <CheckCircle2 aria-hidden="true" size={17} />
+          <span>Votre partie est signée. En attente de l’entreprise.</span>
+        </div>
+      )}
+      {convention.state === "SIGNED_COMPANY" && (
+        <div className="convention-state-banner" role="status">
+          <CheckCircle2 aria-hidden="true" size={17} />
+          <span>
+            Les signatures sont enregistrées. En attente du responsable.
+          </span>
+        </div>
+      )}
+
+      <div className="student-convention-layout">
         <div className="convention-main-column">
           <section className="info-card convention-student-info">
             <div className="convention-section-heading">
-              <div><h3>Mes informations</h3><p>Complétez la partie étudiant de votre convention.</p></div>
-              {hasSignature && !informationEditable && <Lock aria-label="Informations verrouillées" size={18} />}
+              <div>
+                <h3>Mes informations</h3>
+                <p>
+                  Renseignez uniquement les champs réservés à l’étudiant.
+                </p>
+              </div>
+              {!informationEditable && (
+                <Lock
+                  aria-label="Informations verrouillées"
+                  size={18}
+                />
+              )}
             </div>
-            {hasSignature && !informationEditable && (
-              <div className="convention-locked-note"><Lock aria-hidden="true" size={15} /><span>Verrouillé : une signature est déjà enregistrée.</span></div>
+
+            {!informationEditable && (
+              <div className="convention-locked-note">
+                <Lock aria-hidden="true" size={15} />
+                <span>
+                  Verrouillé : le document est signé. Toute modification
+                  annule les signatures.
+                </span>
+              </div>
             )}
             {canRequestModification && (
-              <button className="secondary-button request-modification" type="button" onClick={() => setModificationDialogOpen(true)}>Demander une modification</button>
+              <button
+                className="secondary-button request-modification"
+                type="button"
+                onClick={() => setModificationDialogOpen(true)}
+              >
+                Demander une modification
+              </button>
             )}
-            <form className="convention-info-form" onSubmit={saveInformation} noValidate>
-              <label className="convention-field">
-                <span>Adresse <b aria-hidden="true">*</b></span>
-                <textarea required rows={3} value={draft.studentAddress} readOnly={!informationEditable} aria-invalid={Boolean((touched.studentAddress || submitted) && (fieldErrors.studentAddress || validation.studentAddress))} onChange={(event) => updateField('studentAddress', event.target.value)} />
-                {(touched.studentAddress || submitted) && (fieldErrors.studentAddress || validation.studentAddress) && <small className="field-error" role="alert">{fieldErrors.studentAddress || validation.studentAddress}</small>}
-              </label>
-              <label className="convention-field">
-                <span>Téléphone <b aria-hidden="true">*</b></span>
-                <input required type="tel" inputMode="tel" placeholder="+216 22 345 678" value={draft.studentPhone} readOnly={!informationEditable} aria-invalid={Boolean((touched.studentPhone || submitted) && (fieldErrors.studentPhone || validation.studentPhone))} onChange={(event) => updateField('studentPhone', event.target.value)} />
-                {(touched.studentPhone || submitted) && (fieldErrors.studentPhone || validation.studentPhone) && <small className="field-error" role="alert">{fieldErrors.studentPhone || validation.studentPhone}</small>}
-              </label>
-              <div className="convention-session-details">
-                <strong>Informations du compte</strong>
-                <dl>
-                  <div><dt>Nom</dt><dd>{studentName}</dd></div>
-                  <div><dt>E-mail</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'email')}</dd></div>
-                  <div><dt>Établissement</dt><dd>{etabName(getProfileValue(profile ?? {}, getUser() ?? {}, 'etab'))}</dd></div>
-                  <div><dt>Département</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'department')}</dd></div>
-                  <div><dt>Spécialité</dt><dd>{getProfileValue(profile ?? {}, getUser() ?? {}, 'specialty')}</dd></div>
-                </dl>
-              </div>
-              {informationEditable && <button className="submit-button" type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer mes informations'}</button>}
+            <form
+              className="convention-info-form"
+              onSubmit={saveInformation}
+              noValidate
+            >
+              {(snapshot?.sections || []).map((section) => {
+                const fields = (section.fields || []).filter(
+                  (field) =>
+                    field.source === "STUDENT" || field.source === "AUTO",
+                );
+                if (!fields.length) return null;
+                return (
+                  <fieldset
+                    className="student-field-group"
+                    key={section.id}
+                    disabled={false}
+                  >
+                    <legend>{section.title}</legend>
+                    <div className="student-fields-grid">
+                      {fields.map((field) =>
+                        field.source === "AUTO" ? (
+                          <div
+                            className="convention-auto-field"
+                            key={field.key}
+                          >
+                            <span className="convention-field-label">
+                              {field.label}
+                            </span>
+                            <div className="auto-field-value">
+                              <span>
+                                {draftValues[field.key] || "—"}
+                              </span>
+                              <span className="auto-field-chip">
+                                Renseigné automatiquement
+                              </span>
+                            </div>
+                            {field.helpText && (
+                              <small className="field-help">
+                                {field.helpText}
+                              </small>
+                            )}
+                            <Link
+                              className="auto-field-profile-link"
+                              to="/student/profil"
+                            >
+                              <UserRound aria-hidden="true" size={13} />
+                              Une information est incorrecte ?
+                            </Link>
+                          </div>
+                        ) : (
+                          <FieldInput
+                            key={field.key}
+                            field={field}
+                            value={draftValues[field.key] ?? ""}
+                            disabled={!informationEditable}
+                            message={
+                              fieldErrors[field.key] ||
+                              validateField(field, draftValues[field.key])
+                            }
+                            touched={Boolean(
+                              touched[field.key] || submitted,
+                            )}
+                            onChange={updateField}
+                            onBlur={touchField}
+                          />
+                        ),
+                      )}
+                    </div>
+                  </fieldset>
+                );
+              })}
+
+              {informationEditable && (
+                <div className="convention-save-row">
+                  <Tooltip content={saveTooltip}>
+                    <span
+                      className="convention-disabled-action"
+                      tabIndex={saveDisabled ? 0 : undefined}
+                    >
+                      <button
+                        className="submit-button"
+                        type="submit"
+                        disabled={saveDisabled}
+                      >
+                        {saving
+                          ? "Enregistrement…"
+                          : "Enregistrer mes informations"}
+                      </button>
+                    </span>
+                  </Tooltip>
+                  {dirty && invalidChangedFields.length === 0 && (
+                    <small>
+                      {dirtyFields.length} champ
+                      {dirtyFields.length > 1 ? "s" : ""} modifié
+                      {dirtyFields.length > 1 ? "s" : ""}
+                    </small>
+                  )}
+                </div>
+              )}
             </form>
           </section>
-          <ConventionDocument
-            convention={convention}
-            highlightParty="STUDENT"
-          />
-          <div className="document-actions convention-action-bar">
-            {canSign ? (
-              <button className="submit-button" type="button" onClick={() => setSignDialogOpen(true)}>Signer la convention</button>
-            ) : (
-              <Tooltip content={turnMessage}>
-                <span className="convention-disabled-action" tabIndex={0}>
-                  <button className="submit-button" type="button" disabled>Signer la convention</button>
-                </span>
-              </Tooltip>
-            )}
-            <button className="secondary-button" type="button" onClick={download}><Download aria-hidden="true" size={15} />Télécharger le PDF</button>
-          </div>
         </div>
-        <aside className="convention-aside">
-          <div className="info-card">
-            <h3>Informations</h3>
-            <p><strong>Entreprise</strong>{convention.companyName}</p>
-            <p><strong>Offre</strong>{convention.offerTitle}</p>
-            <p><strong>Établissement</strong>{convention.etabName || etabName(convention.etab)}</p>
-            <p><strong>Créée le</strong>{formatDate(convention.createdAt)}</p>
+
+        <aside className="convention-aside student-convention-aside">
+          <section aria-label="Aperçu de la convention">
+            <div className="student-document-heading">
+              <div>
+                <h3>Document de convention</h3>
+                {dirty && (
+                  <span className="unsaved-document-label">
+                    Aperçu des modifications non enregistrées
+                  </span>
+                )}
+              </div>
+            </div>
+            <ConventionDocument
+              convention={previewConvention}
+              highlightParty="STUDENT"
+            />
+          </section>
+
+          <div className="document-actions convention-action-bar">
+            <Tooltip content={turnMessage || "Signer la convention."}>
+              <span
+                className="convention-disabled-action"
+                tabIndex={canSign ? undefined : 0}
+              >
+                <button
+                  className="submit-button"
+                  type="button"
+                  disabled={!canSign}
+                  onClick={() => setSignDialogOpen(true)}
+                >
+                  {signing ? "Signature…" : "Signer la convention"}
+                </button>
+              </span>
+            </Tooltip>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={download}
+            >
+              <Download aria-hidden="true" size={15} />
+              Télécharger le PDF
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => window.print()}
+            >
+              <Printer aria-hidden="true" size={15} />
+              Imprimer
+            </button>
           </div>
+
           <div className="info-card convention-history">
             <h3>Historique</h3>
-            <ConventionTimeline events={events} />
+            <ConventionTimeline events={events} showRejectionReason />
           </div>
           <VerificationCard convention={convention} onCopy={copyValue} />
         </aside>
       </div>
+
       {signDialogOpen && (
         <ConfirmDialog
           open
           title="Signer la convention"
-          body={<div className="sign-checkbox"><label><input type="checkbox" checked={signatureAcknowledged} onChange={(event) => setSignatureAcknowledged(event.target.checked)} />J’ai lu la convention et je la signe électroniquement.</label><small>Empreinte du document : <code>{convention.pdfSha256?.slice(0, 12)}</code></small></div>}
-          confirmLabel="Signer électroniquement"
-          onCancel={() => { setSignDialogOpen(false); setSignatureAcknowledged(false) }}
-          confirmDisabled={!signatureAcknowledged}
+          body={`Après votre signature, le document est figé.\nEmpreinte du document : ${convention.documentHash?.slice(0, 12) || "—"}`}
+          acknowledgementLabel="J’ai relu la convention et je la signe électroniquement"
+          confirmLabel={signing ? "Signature…" : "Signer électroniquement"}
+          confirmDisabled={signing || !canSign}
+          confirmTooltip={turnMessage}
+          onCancel={() => {
+            setSignDialogOpen(false);
+          }}
           onConfirm={sign}
         />
       )}
@@ -293,14 +887,42 @@ export default function Convention() {
         <ConfirmDialog
           open
           title="Demander une modification ?"
-          body="Modifier vos informations annule toutes les signatures. La convention repasse en brouillon et doit être signée à nouveau par l'entreprise et le responsable."
+          body="Modifier votre convention annule toutes les signatures. Elle repasse en brouillon et doit être signée à nouveau par l’entreprise et le responsable."
           acknowledgementLabel="Je comprends"
-          confirmLabel="Continuer la modification"
+          confirmLabel={modifying ? "Demande en cours…" : "Continuer"}
+          confirmDisabled={modifying}
+          confirmTooltip="Confirmez votre demande de modification."
           onCancel={() => setModificationDialogOpen(false)}
-          onConfirm={() => { setEditingAfterSignature(true); setModificationDialogOpen(false) }}
+          onConfirm={requestModification}
         />
       )}
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </section>
-  )
+  );
+}
+
+function CompletionMeter({ label, progress }) {
+  const ratio = progress.total
+    ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+    : 0;
+  return (
+    <div className="completion-meter">
+      <div className="completion-meter-heading">
+        <strong>{label}</strong>
+        <span>
+          {progress.done} / {progress.total} champs
+        </span>
+      </div>
+      <div
+        className="completion-meter-track"
+        role="progressbar"
+        aria-label={`Complétude ${label.toLowerCase()}`}
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.done}
+      >
+        <span style={{ width: `${ratio}%` }} />
+      </div>
+    </div>
+  );
 }
