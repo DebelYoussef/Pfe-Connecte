@@ -4,7 +4,11 @@
   python infra/seed.py --dry-run   # only print counts
 
 200 students, 40 companies, 30 teachers, 2 responsables, 1 admin, 120 offers,
-100 archived subjects, 2 institutions with templates and settings.
+100 archived subjects, 3 institutions with templates and settings.
+Every user has gsiAll = "ALL" (partition key of the Users.allByCreatedAt index).
+Institut C (ETAB3) has no responsable and its department GENIE has no specialty, so the admin
+warnings can be tested: run_config_health opens INSTITUTION_WITHOUT_RESPONSABLE#ETAB3 and
+DEPARTMENT_WITHOUT_SPECIALTY#ETAB3#GENIE.
 All demo accounts share the password below (one PBKDF2 hash reused: demo data only).
 """
 import argparse
@@ -24,8 +28,10 @@ PASSWORD = "Test1234!"
 NS = uuid.UUID("6f1c2f4e-0c1d-4a53-9a70-3f4f3c1b2a11")
 CREATED = "2026-09-01T00:00:00Z"
 
-ETABS = {"ETAB1": "Institut A", "ETAB2": "Institut B"}
-DEPARTMENTS = ["INFO", "TELECOM"]
+ETABS = {"ETAB1": "Institut A", "ETAB2": "Institut B"}  # with users, responsable, specialties
+EMPTY_ETABS = {"ETAB3": "Institut C"}  # no responsable, no user: raises the admin warnings
+DEPARTMENTS = {"INFO": "Informatique", "TELECOM": "Télécommunications"}
+EMPTY_DEPARTMENTS = {"ETAB3": {"GENIE": "Génie civil"}}  # no specialty
 SPECIALTIES = ["Génie logiciel", "Réseaux", "Data science", "Systèmes embarqués"]
 GOUVERNORATS = ["Tunis", "Sousse", "Sfax", "Monastir", "Nabeul", "Gabès", "Gafsa", "Bizerte"]
 SKILLS = ["python", "java", "aws", "docker", "react", "sql", "spring", "linux", "kubernetes",
@@ -45,6 +51,11 @@ def uid(kind, i):
     return str(uuid.uuid5(NS, f"{kind}-{i}"))
 
 
+def specialty_code(name):
+    """Short specialty code stored in Users.specialty and in the last segment of the id."""
+    return normalize(name).replace(" ", "-")
+
+
 def build(password_hash):
     rng = random.Random(42)
     etab_ids = list(ETABS)
@@ -54,7 +65,7 @@ def build(password_hash):
     def user(kind, i, role, **extra):
         email = f"{kind}{i}@pfe.test"
         item = {"userId": uid(kind, i), "email": email, "passwordHash": password_hash,
-                "role": role, "createdAt": CREATED, **extra}
+                "role": role, "createdAt": CREATED, "gsiAll": "ALL", **extra}
         items["Users"].append(item)
         items["Reference"].append({"type": "EMAIL", "id": email, "userId": item["userId"]})
         accounts.setdefault(role, email)
@@ -71,7 +82,8 @@ def build(password_hash):
     for i in range(1, 201):
         etab = etab_ids[i % 2]
         user("etu", i, "ETU", etab=etab, firstName="Etudiant", lastName=f"{i}",
-             department=rng.choice(DEPARTMENTS), specialty=rng.choice(SPECIALTIES),
+             department=rng.choice(list(DEPARTMENTS)),
+             specialty=specialty_code(rng.choice(SPECIALTIES)),
              skills={normalize(s) for s in rng.sample(SKILLS, rng.randint(3, 5))},
              gouvernorat=rng.choice(GOUVERNORATS), activeCount=0, sansStageEtab=etab)
 
@@ -97,7 +109,7 @@ def build(password_hash):
                 "year": year, "subjectId": uid("subject", f"{year}-{n}"),
                 "title": title, "tokens": tokens, "keywords": tokens})
 
-    for etab, name in ETABS.items():
+    for etab, name in {**ETABS, **EMPTY_ETABS}.items():
         items["Reference"] += [
             {"type": "ETAB", "id": etab, "name": name},
             {"type": "CONV_TEMPLATE", "id": f"{etab}#v1", "text": TEMPLATE,
@@ -105,14 +117,19 @@ def build(password_hash):
             {"type": "SETTINGS", "id": etab, "deadline": "2027-02-15",
              "deadlineEnabled": True, "templateVersion": 1},
         ]
-        for dept in DEPARTMENTS:
+    # DEPARTMENT id = {etabId}#{deptId}; SPECIALTY id = {departmentId}#{specialtyCode} (schema 4.12)
+    for etab in ETABS:
+        for dept, dept_name in DEPARTMENTS.items():
             items["Reference"].append(
-                {"type": "DEPARTMENT", "id": f"{etab}#{dept}", "name": dept})
-    for dept in DEPARTMENTS:
-        for spec in SPECIALTIES:
+                {"type": "DEPARTMENT", "id": f"{etab}#{dept}", "name": dept_name})
+            for spec in SPECIALTIES:
+                items["Reference"].append(
+                    {"type": "SPECIALTY", "id": f"{etab}#{dept}#{specialty_code(spec)}",
+                     "name": spec})
+    for etab, depts in EMPTY_DEPARTMENTS.items():
+        for dept, dept_name in depts.items():
             items["Reference"].append(
-                {"type": "SPECIALTY", "id": f"{dept}#{normalize(spec).replace(' ', '-')}",
-                 "name": spec})
+                {"type": "DEPARTMENT", "id": f"{etab}#{dept}", "name": dept_name})
     return items, accounts
 
 
@@ -133,6 +150,11 @@ if __name__ == "__main__":
                     for row in rows:
                         batch.put_item(Item=row)
         print("Seeded.")
+    print("\nAdmin warnings to expect after run_config_health (2 issues, 1 notification each per admin):")
+    print("  INSTITUTION_WITHOUT_RESPONSABLE#ETAB3")
+    print("  DEPARTMENT_WITHOUT_SPECIALTY#ETAB3#GENIE")
+    print("\nREMINDER: the Users table gained 2 GSIs (byRole, allByCreatedAt) and gsiAll: "
+          "existing tables need teardown, deploy, seed.")
     print(f"\nTest accounts (password: {PASSWORD})")
     for role, email in accounts.items():
         print(f"  {role:5} {email}")

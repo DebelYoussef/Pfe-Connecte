@@ -35,6 +35,24 @@ def table(logical):
     return _res().Table(table_name(logical))
 
 
+def batch_get(logical, keys, consistent=True):
+    """BatchGetItem on one table: dedupes the keys, chunks by 100, retries UnprocessedKeys."""
+    unique = list({tuple(sorted(k.items())): k for k in keys}.values())
+    name = table_name(logical)
+    items = []
+    for start in range(0, len(unique), 100):
+        request = {name: {"Keys": unique[start:start + 100], "ConsistentRead": consistent}}
+        for _ in range(5):
+            res = _res().batch_get_item(RequestItems=request)
+            items.extend(res.get("Responses", {}).get(name, []))
+            request = res.get("UnprocessedKeys") or {}
+            if not request:
+                break
+        else:
+            raise RuntimeError(f"BatchGetItem on {name}: unprocessed keys after 5 attempts")
+    return items
+
+
 def new_id():
     return str(uuid.uuid4())
 

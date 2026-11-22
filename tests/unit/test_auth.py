@@ -90,9 +90,26 @@ def test_signup_success(aws):
     stored = aws.get_item(TableName="pfe-connect-Users",
                           Key={"userId": {"S": user["userId"]}})["Item"]
     assert stored["passwordHash"]["S"].startswith("pbkdf2_sha256$")
+    assert stored["gsiAll"]["S"] == "ALL"
+    assert "gsiAll" not in user
     ref = aws.get_item(TableName="pfe-connect-Reference",
                        Key={"type": {"S": "EMAIL"}, "id": {"S": "sami.ben@example.tn"}})["Item"]
     assert ref["userId"]["S"] == user["userId"]
+
+
+def test_signup_sets_gsi_all_for_every_public_role(aws):
+    company = {"email": "ent@example.tn", "password": "s3cretpass", "role": "ENT",
+               "firstName": "Eya", "lastName": "Trabelsi", "companyName": "Acme"}
+    teacher = {"email": "ens@example.tn", "password": "s3cretpass", "role": "ENS",
+               "firstName": "Omar", "lastName": "Jlassi", "etab": "ETAB1",
+               "expertise": ["Java"]}
+    for payload in (STUDENT, company, teacher):
+        status, body = signup(payload)
+        assert status == 201
+        stored = aws.get_item(TableName="pfe-connect-Users",
+                              Key={"userId": {"S": body["user"]["userId"]}})["Item"]
+        assert stored["gsiAll"]["S"] == "ALL"
+        assert "gsiAll" not in body["user"]
 
 
 def test_signup_duplicate_email_409(aws):
