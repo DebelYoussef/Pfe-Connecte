@@ -1,7 +1,8 @@
 """Idempotent deploy. Safe to run twice.
 
   python infra/deploy.py                  # everything
-  python infra/deploy.py --only tables    # tables | buckets | lambdas | api
+  python infra/deploy.py --only tables    # tables | buckets | lambdas | schedule | api
+  python infra/deploy.py --no-schedule    # everything except the optional EventBridge rule
 """
 import argparse
 import io
@@ -11,7 +12,7 @@ import secrets
 import zipfile
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 import config as C
 
@@ -136,7 +137,9 @@ def build_zip(lambda_dir):
 
 
 def lambda_env():
-    env = {"JWT_SECRET": jwt_secret(), "ALLOWED_ORIGIN": "*"}
+    env = {"JWT_SECRET": jwt_secret(), "ALLOWED_ORIGIN": "*",
+           # the admin Lambda invokes it asynchronously after a change (schema.md 4.9.1)
+           "CONFIG_HEALTH_FUNCTION": C.function_name("config_health")}
     for logical in C.TABLES:
         env[f"TABLE_{logical.upper()}"] = C.table_name(logical)
     for logical in C.BUCKETS:
@@ -148,7 +151,7 @@ def ensure_lambdas():
     print("Lambdas")
     lam = aws("lambda")
     role_arn = f"arn:aws:iam::{ACCOUNT}:role/{C.LAMBDA_ROLE}"
-    for lambda_dir in C.LAMBDAS:
+    for lambda_dir in C.FUNCTIONS:  # API Lambdas and the ones without routes
         fn = C.function_name(lambda_dir)
         code = build_zip(lambda_dir)
         try:
@@ -159,7 +162,8 @@ def ensure_lambdas():
         if not exists:
             lam.create_function(
                 FunctionName=fn, Runtime=C.RUNTIME, Role=role_arn, Handler="handler.handler",
-                Code={"ZipFile": code}, Timeout=C.LAMBDA_TIMEOUT, MemorySize=C.LAMBDA_MEMORY,
+                Code={"ZipFile": code}, Timeout=C.lambda_timeout(lambda_dir),
+                MemorySize=C.LAMBDA_MEMORY,
                 Environment=lambda_env())
             lam.get_waiter("function_active_v2").wait(FunctionName=fn)
             print(f"  + {fn} ({len(code)} bytes)")
@@ -167,7 +171,7 @@ def ensure_lambdas():
             lam.update_function_code(FunctionName=fn, ZipFile=code)
             lam.get_waiter("function_updated_v2").wait(FunctionName=fn)
             lam.update_function_configuration(
-                FunctionName=fn, Role=role_arn, Timeout=C.LAMBDA_TIMEOUT,
+                FunctionName=fn, Role=role_arn, Timeout=C.lambda_timeout(lambda_dir),
                 MemorySize=C.LAMBDA_MEMORY, Environment=lambda_env())
             lam.get_waiter("function_updated_v2").wait(FunctionName=fn)
             print(f"  ~ {fn} ({len(code)} bytes)")
@@ -223,17 +227,75 @@ def ensure_api():
     print(f"  API URL: {url}")
 
 
+# -------------------------------------------------------------- schedule
+MANUAL_HINT = ('    The check can still be run by hand:\n'
+               '      aws lambda invoke --function-name {fn} out.json')
+
+
+def _has_permission(lam, fn, statement_id):
+    try:
+        policy = json.loads(lam.get_policy(FunctionName=fn)["Policy"])
+    except lam.exceptions.ResourceNotFoundException:  # no resource policy yet
+        return False
+    return any(st.get("Sid") == statement_id for st in policy.get("Statement", []))
+
+
+def ensure_schedule():
+    """OPTIONAL: one EventBridge rule per scheduled Lambda (daily config_health).
+
+    Idempotent (put_rule and put_targets overwrite, the permission conflict is ignored). It never
+    fails the deploy: the Learner Lab may deny events:* or lambda:AddPermission.
+    """
+    print("Schedule (optional)")
+    events, lam = aws("events"), aws("lambda")
+    for lambda_dir, spec in C.SCHEDULED_LAMBDAS.items():
+        fn = C.function_name(lambda_dir)
+        rule = spec["rule"]
+        try:
+            fn_arn = lam.get_function(FunctionName=fn)["Configuration"]["FunctionArn"]
+            rule_arn = events.put_rule(
+                Name=rule, ScheduleExpression=spec["schedule"], State="ENABLED",
+                Description=f"Daily run of {fn}")["RuleArn"]
+            statement_id = f"events-{rule}"
+            if not _has_permission(lam, fn, statement_id):
+                try:
+                    lam.add_permission(
+                        FunctionName=fn, StatementId=statement_id,
+                        Action="lambda:InvokeFunction", Principal="events.amazonaws.com",
+                        SourceArn=rule_arn)
+                except lam.exceptions.ResourceConflictException:
+                    pass
+            events.put_targets(Rule=rule, Targets=[{"Id": "1", "Arn": fn_arn}])
+            print(f"  = {rule} ({spec['schedule']}) -> {fn}")
+        except (ClientError, BotoCoreError) as err:
+            if isinstance(err, ClientError):
+                code = err.response["Error"]["Code"]
+                reason = f"{code}: {err.response['Error']['Message']}"
+                denied = "denied" in code.lower() or code in ("UnauthorizedOperation",
+                                                              "AuthorizationError")
+            else:
+                reason, denied = str(err), False
+            head = "denied by the Learner Lab" if denied else "failed"
+            print(f"  ! schedule for {fn} {head} ({reason}); deploy continues.")
+            print(MANUAL_HINT.format(fn=fn))
+
+
 # ------------------------------------------------------------------ main
-STEPS = {"tables": ensure_tables, "buckets": ensure_buckets,
-         "lambdas": ensure_lambdas, "api": ensure_api}
+STEPS = {"tables": ensure_tables, "buckets": ensure_buckets, "lambdas": ensure_lambdas,
+         "schedule": ensure_schedule, "api": ensure_api}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", choices=list(STEPS))
+    parser.add_argument("--no-schedule", action="store_true",
+                        help="skip the optional EventBridge rule")
     args = parser.parse_args()
     print(f"Account {ACCOUNT}, region {C.REGION}")
     for step_name, step in STEPS.items():
-        if not args.only or args.only == step_name:
-            step()
+        if args.only and args.only != step_name:
+            continue
+        if step_name == "schedule" and args.no_schedule and not args.only:
+            continue
+        step()
     # Phase 3: SNS topic, EventBridge rules, S3 event notification go here.
     print("Done. Outputs in infra/outputs.json")

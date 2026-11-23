@@ -1,10 +1,10 @@
+"""Single source of truth for infra names. Keys and indexes mirror docs/schema.md."""
+import os
 import pathlib
+
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-"""Single source of truth for infra names. Keys and indexes mirror docs/schema.md."""
-import os
 
 REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
 PREFIX = "pfe-connect"
@@ -32,6 +32,8 @@ TABLES = {
         _g("byEtabRole", "etab", "role"),
         _g("internsByLastJournal", "stageEtab", "lastJournal"),
         _g("noInternshipByEtab", "sansStageEtab"),
+        _g("byRole", "role", "createdAt"),
+        _g("allByCreatedAt", "gsiAll", "createdAt"),
     ]),
     "Offers": _t("offerId", gsis=[
         _g("byCompany", "companyId", "createdAt"),
@@ -76,7 +78,23 @@ def routes_from_openapi():
     return lambdas
 
 
+# Lambdas served by API routes, discovered from x-lambda in docs/openapi.yaml.
 LAMBDAS = routes_from_openapi()
+
+# Lambdas with NO API route (no x-lambda in openapi.yaml, so routes_from_openapi never finds them):
+# triggered by EventBridge and/or invoked by another Lambda. They are packaged and deployed like
+# the others (ensure_lambdas) but get no API Gateway integration (ensure_api only reads LAMBDAS).
+#   schedule  EventBridge schedule expression of the OPTIONAL daily rule (deploy.py --only schedule)
+#   timeout   seconds, overrides LAMBDA_TIMEOUT
+_SCHEDULED = {
+    "config_health": {"schedule": "rate(1 day)", "rule": f"{PREFIX}-config-health-daily",
+                      "timeout": 60},
+}
+SCHEDULED_LAMBDAS = {name: spec for name, spec in _SCHEDULED.items()
+                     if (ROOT / "lambdas" / name / "handler.py").is_file()}
+
+# Every Lambda to package and deploy: with routes first, then the scheduled ones.
+FUNCTIONS = sorted(LAMBDAS) + sorted(set(SCHEDULED_LAMBDAS) - set(LAMBDAS))
 
 
 def table_name(logical):
@@ -89,3 +107,7 @@ def bucket_name(logical, account):
 
 def function_name(lambda_dir):
     return f"{PREFIX}-{lambda_dir}"
+
+
+def lambda_timeout(lambda_dir):
+    return SCHEDULED_LAMBDAS.get(lambda_dir, {}).get("timeout", LAMBDA_TIMEOUT)

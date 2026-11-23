@@ -157,6 +157,7 @@ def signup(req):
         "firstName": as_str(body, "firstName", 1, 100),
         "lastName": as_str(body, "lastName", 1, 100),
         "createdAt": now_iso(),
+        "gsiAll": "ALL",  # constant partition key of the allByCreatedAt index
     }
 
     if role in ("ETU", "ENS"):

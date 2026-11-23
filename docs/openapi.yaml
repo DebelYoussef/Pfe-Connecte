@@ -24,6 +24,7 @@ tags:
   - name: Reports
   - name: Notifications
   - name: Verify
+  - name: Reference
   - name: Admin
   - name: Health
 
@@ -974,7 +975,27 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListUsers
-      summary: List users
+      summary: List users (filters role, etab, exact e-mail)
+      description: |-
+        Lists accounts. The data store has no free-text search: there is NO search by first name,
+        last name or partial e-mail. Each combination of filters uses exactly one access path
+        (schema.md section 5):
+
+        | Filters sent | Access path | Order |
+        |---|---|---|
+        | `email` (alone or with others) | Reference GetItem (`EMAIL`, lowercased e-mail) then Users GetItem | 0 or 1 item |
+        | `role` + `etab` | Users.byEtabRole (PK `etab`, SK `role` = role) | not defined inside the group |
+        | `role` only | Users.byRole (PK `role`, SK `createdAt`) | newest first |
+        | none | Users.allByCreatedAt (PK `gsiAll` = `ALL`, SK `createdAt`) | newest first |
+        | `etab` only | Users.byEtabRole (PK `etab`, no condition on SK) | grouped by role |
+
+        Rules:
+        - `email` is an EXACT match (compared lowercased). With `email`, `limit` and `cursor` are
+          ignored and `nextCursor` is null. If `role` or `etab` is sent too, they are checked on the
+          found user and a mismatch returns an empty page.
+        - Administrators have no `etab`: `role=ADM` together with `etab` returns an empty page. To
+          list administrators, send `role=ADM` alone.
+        - A malformed `email`, or a `cursor` produced by another filter combination, is a 400.
       x-lambda: admin
       x-roles: [ADM]
       parameters:
@@ -983,7 +1004,12 @@ paths:
           schema: {$ref: '#/components/schemas/Role'}
         - name: etab
           in: query
+          description: Institution id (from GET /v1/reference/institutions)
           schema: {type: string}
+        - name: email
+          in: query
+          description: Exact e-mail address. No partial match, no search by name.
+          schema: {type: string, format: email}
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -999,6 +1025,22 @@ paths:
       tags: [Admin]
       operationId: adminCreateUser
       summary: Create an account with any role (including RESP and ADM)
+      description: |-
+        The administrator chooses or generates the password in the UI (minimum 8 characters) and
+        gives it to the person. There is no change-password, reset, forced change, suspension,
+        deletion or audit feature.
+
+        Persistence: the same two-item transaction as signup (Users + Reference `EMAIL`, both
+        `attribute_not_exists`). An e-mail already used returns 409 `EMAIL_TAKEN`.
+
+        Field rules: `etab` is required for ETU, ENS and RESP and must be omitted for ENT and ADM
+        (administrators have no etab). `department` and `specialty` take the SHORT codes returned
+        by the reference lists, never the ids or the names.
+
+        Side effects: when the role is ADM, every other administrator receives an
+        ADMIN_ACCOUNT_CREATED notification. When the role is RESP, the configuration check is
+        re-run and may close INSTITUTION_WITHOUT_RESPONSABLE and
+        CONVENTION_WAITING_NO_RESPONSABLE issues.
       x-lambda: admin
       x-roles: [ADM]
       requestBody:
@@ -1015,7 +1057,13 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/Conflict'}
+        '409':
+          description: Email already used (code EMAIL_TAKEN)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example:
+                error: {code: EMAIL_TAKEN, message: Email already registered, details: {}, requestId: 6f1c2e0a-0000-4000-8000-000000000000}
 
   /v1/admin/users/{id}:
     parameters:
@@ -1024,6 +1072,20 @@ paths:
       tags: [Admin]
       operationId: adminUpdateUser
       summary: Modify an account
+      description: |-
+        Only these fields are accepted: `role`, `etab`, `firstName`, `lastName`, `department`,
+        `specialty`, `gouvernorat`, `companyName`. Any other field is a 400. `department` and
+        `specialty` take the SHORT codes returned by the reference lists.
+
+        Safety rules:
+        - The caller cannot change their own role: when `{id}` is the caller and `role` differs from
+          the current one, the answer is 403 `CANNOT_CHANGE_OWN_ROLE`. The caller can still edit the
+          other fields of their own account. This also guarantees that at least one ADM remains.
+        - Moving the last RESP of an institution to another institution, or changing their role, is
+          ALLOWED. It is never blocked: the institution raises an INSTITUTION_WITHOUT_RESPONSABLE
+          notification (level WARNING) for the administrators, once per issue.
+        - Changing a role to ADM removes `etab` (administrators have no etab); sending `etab` for an
+          ADM is a 400. The other administrators receive ADMIN_ROLE_GRANTED.
       x-lambda: admin
       x-roles: [ADM]
       requestBody:
@@ -1039,7 +1101,13 @@ paths:
               schema: {$ref: '#/components/schemas/User'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403':
+          description: Caller is not an ADM, or tries to change their own role (code CANNOT_CHANGE_OWN_ROLE)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example:
+                error: {code: CANNOT_CHANGE_OWN_ROLE, message: You cannot change your own role, details: {}, requestId: 6f1c2e0a-0000-4000-8000-000000000000}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /v1/admin/institutions:
@@ -1242,6 +1310,108 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  # ----------------------------------------------------------- Reference
+  /v1/reference/institutions:
+    get:
+      tags: [Reference]
+      operationId: listReferenceInstitutions
+      summary: Public list of institutions (signup and admin forms)
+      description: >-
+        Small list, no pagination. `id` is the value expected by the `etab` field of signup and of
+        admin user creation, and by the `etab` query parameters.
+      x-lambda: reference
+      x-roles: public
+      security: []
+      responses:
+        '200':
+          description: Institutions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceInstitutionList'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /v1/reference/departments:
+    get:
+      tags: [Reference]
+      operationId: listReferenceDepartments
+      summary: Public list of the departments of an institution
+      description: |-
+        Small list, no pagination. `etab` is required (400 when missing); an unknown institution
+        returns an empty list.
+
+        `id` versus `code`: `id` is the stored identifier (`{etabId}#{deptId}`, e.g. `ETAB1#INFO`) and
+        is only used as the `department` filter of GET /v1/reference/specialties. `code` is the SHORT
+        code (e.g. `INFO`) and is the value of the `department` field of SignupStudent,
+        AdminUserCreate, AdminUserUpdate and ProfileUpdate. Never send `id` in those fields.
+      x-lambda: reference
+      x-roles: public
+      security: []
+      parameters:
+        - name: etab
+          in: query
+          required: true
+          description: Institution id (from GET /v1/reference/institutions)
+          schema: {type: string}
+      responses:
+        '200':
+          description: Departments of the institution
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceDepartmentList'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /v1/reference/specialties:
+    get:
+      tags: [Reference]
+      operationId: listReferenceSpecialties
+      summary: Public list of the specialties of a department
+      description: |-
+        Small list, no pagination. `department` is required (400 when missing) and takes the
+        department `id` (e.g. `ETAB1#INFO`, from GET /v1/reference/departments), not its `code`,
+        because codes repeat across institutions. An unknown department returns an empty list.
+
+        `id` versus `code`: `id` is the stored identifier (`{departmentId}#{specialtyId}`, e.g.
+        `ETAB1#INFO#IA`). `code` is the SHORT code (e.g. `IA`) and is the value of the `specialty`
+        field of SignupStudent, AdminUserCreate, AdminUserUpdate and ProfileUpdate.
+      x-lambda: reference
+      x-roles: public
+      security: []
+      parameters:
+        - name: department
+          in: query
+          required: true
+          description: Department id (`id` of a department item, e.g. ETAB1#INFO)
+          schema: {type: string}
+      responses:
+        '200':
+          description: Specialties of the department
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceSpecialtyList'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /v1/admin/overview:
+    get:
+      tags: [Admin]
+      operationId: adminGetOverview
+      summary: Admin home worklist
+      description: |-
+        Powers the admin home page. Counts come from Users.byRole (one COUNT query per role) and
+        Users.allByCreatedAt (accounts created in the last 7 days). The three lists are read from the
+        open ISSUE records written by the configuration check (daily and after admin changes), so
+        they are as fresh as the last check; `since` is the time the issue was detected.
+        Lists are not paginated.
+      x-lambda: admin
+      x-roles: [ADM]
+      responses:
+        '200':
+          description: Overview
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminOverview'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
 components:
   securitySchemes:
@@ -1376,6 +1546,39 @@ components:
     ReportDecision:
       type: string
       enum: [APPROVED, CHANGES_REQUESTED]
+    NotificationType:
+      type: string
+      description: >-
+        Notification kinds. Values from APPLICATION_RECEIVED to REPORT_REVIEWED are the existing
+        user-facing types (to be aligned with the notifier); the last five are for administrators.
+      enum:
+        - APPLICATION_RECEIVED
+        - APPLICATION_STATUS_CHANGED
+        - CONVENTION_SIGNATURE_REQUIRED
+        - CONVENTION_REJECTED
+        - CONVENTION_APPROVED
+        - CONVENTION_STUCK
+        - SUPERVISION_REQUESTED
+        - SUPERVISION_RESPONDED
+        - SUPERVISION_ASSIGNED
+        - JOURNAL_VALIDATED
+        - JOURNAL_MISSING
+        - NO_INTERNSHIP_DEADLINE
+        - REPORT_SUBMITTED
+        - REPORT_REVIEWED
+        - INSTITUTION_WITHOUT_RESPONSABLE
+        - DEPARTMENT_WITHOUT_SPECIALTY
+        - CONVENTION_WAITING_NO_RESPONSABLE
+        - ADMIN_ACCOUNT_CREATED
+        - ADMIN_ROLE_GRANTED
+    NotificationRefType:
+      type: string
+      description: Kind of object a notification points to (see refId on Notification)
+      enum: [APPLICATION, CONVENTION, SUPERVISION, JOURNAL, REPORT, OFFER, USER, INSTITUTION]
+    NotificationLevel:
+      type: string
+      description: Optional severity. Absent means INFO.
+      enum: [INFO, WARNING]
 
     # --------------------------------------------------------------- auth
     User:
@@ -1432,9 +1635,9 @@ components:
         role: {type: string, enum: [ETU]}
         firstName: {type: string}
         lastName: {type: string}
-        etab: {type: string}
-        department: {type: string}
-        specialty: {type: string}
+        etab: {type: string, description: 'Institution id: the id of an item of GET /v1/reference/institutions'}
+        department: {type: string, description: 'SHORT department code: the code of an item of GET /v1/reference/departments (e.g. INFO). Not the department id (ETAB1#INFO), not the name'}
+        specialty: {type: string, description: 'SHORT specialty code: the code of an item of GET /v1/reference/specialties (e.g. IA). Not the specialty id, not the name'}
         skills: {type: array, items: {type: string}}
         gouvernorat: {type: string}
     SignupCompany:
@@ -1466,8 +1669,8 @@ components:
       properties:
         firstName: {type: string}
         lastName: {type: string}
-        department: {type: string}
-        specialty: {type: string}
+        department: {type: string, description: 'SHORT department code (see GET /v1/reference/departments), not the id or the name'}
+        specialty: {type: string, description: 'SHORT specialty code (see GET /v1/reference/specialties), not the id or the name'}
         skills: {type: array, items: {type: string}}
         gouvernorat: {type: string}
         companyName: {type: string}
@@ -1740,11 +1943,12 @@ components:
       properties:
         id: {type: string, description: 'Sort key createdAt#id; URL-encode in paths'}
         createdAt: {type: string, format: date-time}
-        type: {type: string}
+        type: {$ref: '#/components/schemas/NotificationType'}
         title: {type: string}
         body: {type: string}
-        refType: {type: string, example: CONVENTION}
-        refId: {type: string}
+        refType: {$ref: '#/components/schemas/NotificationRefType'}
+        refId: {type: string, description: 'Id of the referenced object. For DEPARTMENT_WITHOUT_SPECIALTY (refType INSTITUTION) it is the department id, e.g. ETAB1#INFO'}
+        level: {$ref: '#/components/schemas/NotificationLevel'}
         read: {type: boolean}
 
     # -------------------------------------------------------------- verify
@@ -1767,11 +1971,11 @@ components:
         email: {type: string, format: email}
         password: {type: string, format: password, minLength: 8}
         role: {$ref: '#/components/schemas/Role'}
-        etab: {type: string}
+        etab: {type: string, description: 'Institution id (GET /v1/reference/institutions). Required for ETU, ENS, RESP; omit for ENT and ADM'}
         firstName: {type: string}
         lastName: {type: string}
-        department: {type: string}
-        specialty: {type: string}
+        department: {type: string, description: 'SHORT department code (code of GET /v1/reference/departments, e.g. INFO). Not the id (ETAB1#INFO), not the name'}
+        specialty: {type: string, description: 'SHORT specialty code (code of GET /v1/reference/specialties, e.g. IA). Not the id, not the name'}
         skills: {type: array, items: {type: string}}
         gouvernorat: {type: string}
         expertise: {type: array, items: {type: string}}
@@ -1779,13 +1983,14 @@ components:
     AdminUserUpdate:
       type: object
       additionalProperties: false
+      description: Whitelist of editable fields. A caller cannot change their own role (403 CANNOT_CHANGE_OWN_ROLE).
       properties:
         role: {$ref: '#/components/schemas/Role'}
-        etab: {type: string}
+        etab: {type: string, description: Institution id. Not allowed for an ADM}
         firstName: {type: string}
         lastName: {type: string}
-        department: {type: string}
-        specialty: {type: string}
+        department: {type: string, description: 'SHORT department code, not the id or the name'}
+        specialty: {type: string, description: 'SHORT specialty code, not the id or the name'}
         gouvernorat: {type: string}
         companyName: {type: string}
     Institution:
@@ -1830,6 +2035,84 @@ components:
         department: {type: string, description: Required on creation}
         name: {type: string, minLength: 1}
         compatibleWith: {type: array, items: {type: string}}
+    AdminOverview:
+      type: object
+      required: [usersByRole, recentUsersCount, institutionsWithoutResponsable, departmentsWithoutSpecialty, conventionsWaitingForMissingResponsable]
+      properties:
+        usersByRole:
+          type: object
+          additionalProperties: false
+          required: [ETU, ENT, ENS, RESP, ADM]
+          properties:
+            ETU: {type: integer, minimum: 0}
+            ENT: {type: integer, minimum: 0}
+            ENS: {type: integer, minimum: 0}
+            RESP: {type: integer, minimum: 0}
+            ADM: {type: integer, minimum: 0}
+        recentUsersCount: {type: integer, minimum: 0, description: Accounts created in the last 7 days}
+        institutionsWithoutResponsable:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: {type: string, description: Institution id}
+              name: {type: string}
+        departmentsWithoutSpecialty:
+          type: array
+          items:
+            type: object
+            required: [id, etab, name]
+            properties:
+              id: {type: string, description: 'Department id, e.g. ETAB1#INFO'}
+              etab: {type: string, description: Institution id}
+              name: {type: string}
+        conventionsWaitingForMissingResponsable:
+          type: array
+          description: Conventions waiting for the signature of an institution that has no RESP
+          items:
+            type: object
+            required: [conventionId, etab, since]
+            properties:
+              conventionId: {type: string, format: uuid}
+              etab: {type: string, description: Institution id}
+              since: {type: string, format: date-time, description: Time the issue was detected}
+    ReferenceInstitution:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string, description: 'Institution id. Value of the etab field and of the etab query parameters'}
+        name: {type: string}
+    ReferenceDepartment:
+      type: object
+      required: [id, code, name]
+      properties:
+        id: {type: string, description: 'Stored identifier {etabId}#{deptId}, e.g. ETAB1#INFO. Only used as the department filter of /v1/reference/specialties'}
+        code: {type: string, description: 'SHORT code (deptId), e.g. INFO. Value of the department field of signup and admin user creation'}
+        name: {type: string}
+    ReferenceSpecialty:
+      type: object
+      required: [id, code, name]
+      properties:
+        id: {type: string, description: 'Stored identifier {departmentId}#{specialtyId}, e.g. ETAB1#INFO#IA'}
+        code: {type: string, description: 'SHORT code (specialtyId), e.g. IA. Value of the specialty field of signup and admin user creation'}
+        name: {type: string}
+        compatibleWith: {type: array, items: {type: string}, description: Offer domains compatible with this specialty}
+    ReferenceInstitutionList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ReferenceInstitution'}}
+    ReferenceDepartmentList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ReferenceDepartment'}}
+    ReferenceSpecialtyList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ReferenceSpecialty'}}
 
     # --------------------------------------------------------------- pages
     OfferPage:
