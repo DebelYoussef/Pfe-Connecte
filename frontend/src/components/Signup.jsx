@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import useReferenceData from "../hooks/useReferenceData";
+import Skeleton from "./ui/Skeleton";
 import ThemeToggle from "./ThemeToggle";
 import ErrorBanner, { getErrorBanner } from "./ErrorBanner";
 import { api } from "../api";
@@ -52,14 +54,6 @@ const roles = [
   ["ENT", "Entreprise", Building2],
   ["ENS", "Enseignant", School],
 ];
-const ETABS = [
-  { value: "ETAB1", label: "Institut A" },
-  { value: "ETAB2", label: "Institut B" },
-];
-const DEPARTMENTS = [
-  { value: "INFO", label: "Informatique" },
-  { value: "TELECOM", label: "Télécommunications" },
-];
 function Brand() {
   return (
     <Link to="/login" className="brand-mark">
@@ -88,28 +82,59 @@ const GoogleIcon = () => (
     />
   </svg>
 );
-function Select({ id, label, value, onChange, onBlur, options, error }) {
+function Select({
+  id,
+  label,
+  value,
+  onChange,
+  onBlur,
+  options,
+  error,
+  disabled = false,
+  disabledTooltip,
+  loading = false,
+  emptyMessage,
+}) {
+  const showEmptyHint = Boolean(emptyMessage && !loading && options.length === 0);
+  const describedBy = [
+    error ? `${id}-error` : null,
+    showEmptyHint ? `${id}-hint` : null,
+  ].filter(Boolean).join(" ") || undefined;
   return (
     <div className="field-group">
       <label htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        aria-invalid={error ? "true" : undefined}
-        aria-describedby={error ? `${id}-error` : undefined}
-      >
-        <option value="">Sélectionner</option>
-        {options.map((x) => {
-          const o = typeof x === "string" ? { value: x, label: x } : x;
-          return (
-            <option key={o.value} value={o.value}>
-              {o.label}
+      {loading ? (
+        <Skeleton className="signup-reference-skeleton" />
+      ) : (
+        <div title={disabled ? disabledTooltip : undefined}>
+          <select
+            id={id}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+            disabled={disabled}
+            aria-invalid={error ? "true" : undefined}
+            aria-describedby={describedBy}
+          >
+            <option value="">
+              {showEmptyHint ? "Aucune option disponible pour le moment" : "Sélectionner"}
             </option>
-          );
-        })}
-      </select>
+            {options.map((x) => {
+              const o = typeof x === "string" ? { value: x, label: x } : x;
+              return (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
+      {showEmptyHint && (
+        <p id={`${id}-hint`} className="text-sm text-[var(--muted)]">
+          {emptyMessage}
+        </p>
+      )}
       {error && (
         <p id={`${id}-error`} className="field-error">
           {error}
@@ -194,12 +219,48 @@ export default function Signup() {
   const [errors, setErrors] = useState({});
   const [emailTaken, setEmailTaken] = useState(false);
   const [banner, setBanner] = useState(null);
+  const reference = useReferenceData({
+    etab: role === "ETU" ? f.etab : "",
+    department: role === "ETU" ? f.department : "",
+  });
+  const institutions = reference.institutions.map((item) => ({
+    value: item.id,
+    label: item.name,
+  }));
+  const departments = reference.error
+    ? []
+    : reference.departments
+        .filter((item) => f.etab && item.id.startsWith(`${f.etab}#`))
+        .map((item) => ({ value: item.code, label: item.name }));
+  const selectedDepartment = reference.departments.find(
+    (item) => item.code === f.department && item.id.startsWith(`${f.etab}#`),
+  );
+  const specialties = reference.error || !selectedDepartment
+    ? []
+    : reference.specialties
+        .filter((item) => item.id.startsWith(`${selectedDepartment.id}#`))
+        .map((item) => ({ value: item.code, label: item.name }));
+  const referenceErrorMessage = reference.error?.status === 429
+    ? "Trop de requêtes, réessayez dans un instant."
+    : reference.error?.message || "Les listes de référence sont indisponibles.";
 
   const clearField = (k) =>
     setErrors((p) => (p[k] ? { ...p, [k]: "" } : p));
   const set = (k, v) => {
-    setF((x) => ({ ...x, [k]: v }));
+    setF((x) =>
+      k === "etab"
+        ? { ...x, etab: v, department: "", specialty: "" }
+        : k === "department"
+          ? { ...x, department: v, specialty: "" }
+          : { ...x, [k]: v },
+    );
     clearField(k);
+    if (k === "etab") {
+      clearField("department");
+      clearField("specialty");
+    } else if (k === "department") {
+      clearField("specialty");
+    }
     if (k === "email") setEmailTaken(false);
     setBanner(null);
   };
@@ -388,6 +449,13 @@ export default function Signup() {
               onClose={() => setBanner(null)}
             />
           )}
+          {reference.error && role !== "ENT" && (
+            <ErrorBanner
+              title={reference.error.status === 429 ? "Trop de requêtes" : "Listes indisponibles"}
+              message={referenceErrorMessage}
+              onRetry={reference.retry}
+            />
+          )}
           <form onSubmit={submit} noValidate>
             <fieldset className="role-selector">
               <legend className="sr-only">Choisissez votre profil</legend>
@@ -487,8 +555,12 @@ export default function Signup() {
                   value={f.etab}
                   onChange={(v) => set("etab", v)}
                   onBlur={() => blur("etab")}
-                  options={ETABS}
+                  options={institutions}
                   error={errors.etab}
+                  loading={reference.loading && !institutions.length}
+                  disabled={!institutions.length}
+                  disabledTooltip="Les établissements ne sont pas disponibles."
+                  emptyMessage={!reference.error ? "Aucune option disponible pour le moment. Contactez l’administrateur." : undefined}
                 />
                 <div className="name-grid">
                   <Select
@@ -497,8 +569,12 @@ export default function Signup() {
                     value={f.department}
                     onChange={(v) => set("department", v)}
                     onBlur={() => blur("department")}
-                    options={DEPARTMENTS}
+                    options={departments}
                     error={errors.department}
+                    loading={Boolean(f.etab && reference.loading)}
+                    disabled={!f.etab || reference.loading || !departments.length}
+                    disabledTooltip={!f.etab ? "Choisissez d’abord un établissement." : "Aucun département disponible. Contactez l’administrateur."}
+                    emptyMessage={f.etab && !reference.error ? "Aucune option disponible pour le moment. Contactez l’administrateur." : undefined}
                   />
                   <Select
                     id="specialty"
@@ -506,13 +582,12 @@ export default function Signup() {
                     value={f.specialty}
                     onChange={(v) => set("specialty", v)}
                     onBlur={() => blur("specialty")}
-                    options={[
-                      "Génie logiciel",
-                      "Réseaux",
-                      "Data science",
-                      "Systèmes embarqués",
-                    ]}
+                    options={specialties}
                     error={errors.specialty}
+                    loading={Boolean(f.department && reference.loading)}
+                    disabled={!f.department || reference.loading || !specialties.length}
+                    disabledTooltip={!f.department ? "Choisissez d’abord un département." : "Aucune spécialité disponible. Contactez l’administrateur."}
+                    emptyMessage={f.department && !reference.error ? "Aucune option disponible pour le moment. Contactez l’administrateur." : undefined}
                   />
                 </div>
                 <Select
@@ -549,8 +624,12 @@ export default function Signup() {
                   value={f.etab}
                   onChange={(v) => set("etab", v)}
                   onBlur={() => blur("etab")}
-                  options={ETABS}
+                  options={institutions}
                   error={errors.etab}
+                  loading={reference.loading && !institutions.length}
+                  disabled={!institutions.length}
+                  disabledTooltip="Les établissements ne sont pas disponibles."
+                  emptyMessage={!reference.error ? "Aucune option disponible pour le moment. Contactez l’administrateur." : undefined}
                 />
                 <Tags
                   label="Domaines d’expertise"
