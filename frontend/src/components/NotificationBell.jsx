@@ -1,14 +1,19 @@
 import {
   Bell,
   BookOpen,
+  Building2,
   BriefcaseBusiness,
   CheckCheck,
+  FileClock,
   FileText,
+  Layers,
+  ShieldAlert,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useNotifications } from "../context/NotificationsContext";
+import Toast from "./ui/Toast";
 import Tooltip from "./ui/Tooltip";
 const iconFor = {
   APPLICATION: BriefcaseBusiness,
@@ -19,11 +24,19 @@ const iconFor = {
   REPORT: FileText,
   OFFER: BriefcaseBusiness,
   REMINDER: Bell,
+  INSTITUTION_WITHOUT_RESPONSABLE: Building2,
+  DEPARTMENT_WITHOUT_SPECIALTY: Layers,
+  CONVENTION_WAITING_NO_RESPONSABLE: FileClock,
+  ADMIN_ACCOUNT_CREATED: ShieldAlert,
+  ADMIN_ROLE_GRANTED: ShieldAlert,
 };
 function destinationFor(notificationRouteMap, item, homePath) {
   const destination = notificationRouteMap?.[item.refType];
   if (!destination) return homePath;
-  return destination.replace("{refId}", encodeURIComponent(item.refId || ""));
+  const refId = item.type === "DEPARTMENT_WITHOUT_SPECIALTY"
+    ? item.refId?.split("#")[0]
+    : item.refId;
+  return destination.replace("{refId}", encodeURIComponent(refId || ""));
 }
 
 function createdLabel(createdAt) {
@@ -40,10 +53,20 @@ export default function NotificationBell({
   notificationsPath = "/student/notifications",
   homePath = "/student",
 }) {
-  const { items, unread, markRead, markAll } = useNotifications();
+  const {
+    items,
+    unread,
+    markRead,
+    markAll,
+    refresh,
+    refreshOnOpen,
+    error,
+    loading,
+  } = useNotifications();
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
+  const [toast, setToast] = useState("");
   const ref = useRef(null);
   const navigate = useNavigate();
 
@@ -52,8 +75,9 @@ export default function NotificationBell({
     setMarkingAll(true);
     try {
       await markAll();
-    } catch {
-      setActionError("Les notifications n’ont pas pu être mises à jour.");
+    } catch (error) {
+      setActionError(error?.message || "Les notifications n’ont pas pu être mises à jour.");
+      setToast(error?.message || "Les notifications n’ont pas pu être mises à jour.");
     } finally {
       setMarkingAll(false);
     }
@@ -63,8 +87,8 @@ export default function NotificationBell({
     if (!item.read) {
       try {
         await markRead(item.id);
-      } catch {
-        setActionError("Cette notification n’a pas pu être marquée comme lue.");
+      } catch (error) {
+        setActionError(error?.message || "Cette notification n’a pas pu être marquée comme lue.");
         return;
       }
     }
@@ -92,7 +116,12 @@ export default function NotificationBell({
         aria-label="Notifications"
         aria-haspopup="true"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          const willOpen = !open;
+          setOpen(willOpen);
+          setActionError("");
+          if (willOpen && refreshOnOpen) void refresh();
+        }}
       >
         <Bell size={19} />
         {unread > 0 && (
@@ -141,11 +170,14 @@ export default function NotificationBell({
                   key={item.id}
                   onClick={() => void openNotification(item)}
                 >
-                  <span className="notification-type-icon">
+                  <span className={`notification-type-icon${item.level === "WARNING" ? " warning" : ""}`}>
                     <Icon size={15} />
                   </span>
                   <span>
-                    <strong>{item.title}</strong>
+                    <strong>
+                      {item.title}
+                      {item.level === "WARNING" && <em className="notification-alert-pill">Alerte</em>}
+                    </strong>
                     <small>{item.body}</small>
                     <em>{createdLabel(item.createdAt)}</em>
                   </span>
@@ -153,10 +185,17 @@ export default function NotificationBell({
                 </button>
               );
             })}
+            {loading && !items.length && <p className="empty-state">Chargement…</p>}
             {!items.length && (
-              <p className="empty-state">Aucune notification</p>
+              !loading && <p className="empty-state">Aucune notification</p>
             )}
           </div>
+          {error && (
+            <p className="notification-popover-error" role="alert">
+              {error.message || "Impossible de charger les notifications."}
+              <button type="button" onClick={() => void refresh()}>Réessayer</button>
+            </p>
+          )}
           {actionError && (
             <p className="notification-popover-error" role="alert">
               {actionError}
@@ -167,6 +206,7 @@ export default function NotificationBell({
           </Link>
         </div>
       )}
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </div>
   );
 }

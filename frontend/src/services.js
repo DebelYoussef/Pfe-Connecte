@@ -2,6 +2,11 @@
 import { getToken, getUser, saveSession } from "./auth";
 import { api } from "./api";
 import {
+  REAL as ADMIN_REAL,
+  listAdminNotifications,
+  markAdminNotificationRead,
+} from "./services.admin";
+import {
   createConventionFromApplication,
   getConventions as listMockConventions,
   requestModification,
@@ -577,10 +582,22 @@ const allMockNotifications = [
 let mockNotifications = REAL.applications
   ? allMockNotifications.filter((item) => item.type === "REMINDER")
   : allMockNotifications;
-export async function listNotifications() {
-  return wait({ items: mockNotifications, nextCursor: null });
+export async function listNotifications({ limit = 20, cursor } = {}) {
+  if (getUser()?.role === "ADM" && ADMIN_REAL.notifications) {
+    return listAdminNotifications({ limit, cursor });
+  }
+  const start = cursor ? Number(cursor) : 0;
+  const items = mockNotifications.slice(start, start + limit);
+  const next = start + limit;
+  return wait({
+    items,
+    nextCursor: next < mockNotifications.length ? String(next) : null,
+  });
 }
 export async function markNotificationRead(id) {
+  if (getUser()?.role === "ADM" && ADMIN_REAL.notifications) {
+    return markAdminNotificationRead(id);
+  }
   mockNotifications = mockNotifications.map((item) =>
     item.id === id ? { ...item, read: true } : item,
   );

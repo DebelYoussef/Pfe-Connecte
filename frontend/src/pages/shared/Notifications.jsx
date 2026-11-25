@@ -2,9 +2,13 @@ import {
   BriefcaseBusiness,
   Bell,
   BookOpen,
+  Building2,
   Check,
   CheckCheck,
+  FileClock,
   FileText,
+  Layers,
+  ShieldAlert,
   UsersRound,
 } from "lucide-react";
 import { useState } from "react";
@@ -26,12 +30,20 @@ const icons = {
   REPORT: FileText,
   OFFER: BriefcaseBusiness,
   REMINDER: Bell,
+  INSTITUTION_WITHOUT_RESPONSABLE: Building2,
+  DEPARTMENT_WITHOUT_SPECIALTY: Layers,
+  CONVENTION_WAITING_NO_RESPONSABLE: FileClock,
+  ADMIN_ACCOUNT_CREATED: ShieldAlert,
+  ADMIN_ROLE_GRANTED: ShieldAlert,
 };
 
 function destinationFor(notificationRouteMap, item, homePath) {
   const destination = notificationRouteMap?.[item.refType];
   if (!destination) return homePath;
-  return destination.replace("{refId}", encodeURIComponent(item.refId || ""));
+  const refId = item.type === "DEPARTMENT_WITHOUT_SPECIALTY"
+    ? item.refId?.split("#")[0]
+    : item.refId;
+  return destination.replace("{refId}", encodeURIComponent(refId || ""));
 }
 
 function createdLabel(createdAt) {
@@ -50,6 +62,9 @@ export default function Notifications() {
     markRead,
     markAll,
     loading,
+    loadingMore,
+    nextCursor,
+    loadMore,
     error,
     refresh,
   } = useNotifications();
@@ -66,8 +81,8 @@ export default function Notifications() {
     try {
       await markAll();
       setToast("Toutes les notifications sont lues.");
-    } catch {
-      setToast("Les notifications n’ont pas pu être mises à jour.");
+    } catch (error) {
+      setToast(error?.message || "Les notifications n’ont pas pu être mises à jour.");
     } finally {
       setBusy(false);
     }
@@ -75,8 +90,8 @@ export default function Notifications() {
 
   function openNotification(item) {
     if (!item.read) {
-      void markRead(item.id).catch(() =>
-        setToast("Cette notification n’a pas pu être marquée comme lue."),
+      void markRead(item.id).catch((markError) =>
+        setToast(markError?.message || "Cette notification n’a pas pu être marquée comme lue."),
       );
     }
     navigate(destinationFor(notificationRouteMap, item, homePath));
@@ -161,11 +176,14 @@ export default function Notifications() {
                   }
                 }}
               >
-                <span className="notification-type-icon">
+                <span className={`notification-type-icon${item.level === "WARNING" ? " warning" : ""}`}>
                   <Icon size={17} />
                 </span>
                 <div>
-                  <strong>{item.title}</strong>
+                  <strong>
+                    {item.title}
+                    {item.level === "WARNING" && <em className="notification-alert-pill">Alerte</em>}
+                  </strong>
                   <p>{item.body}</p>
                   <small>{createdLabel(item.createdAt)}</small>
                 </div>
@@ -200,6 +218,18 @@ export default function Notifications() {
           actionTo={homePath}
         />
       ) : null}
+      {nextCursor && !error && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            className="outlined-action interactive"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "Chargement…" : "Charger plus"}
+          </button>
+        </div>
+      )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </section>
   );

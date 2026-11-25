@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import CompleteProfile from "./components/CompleteProfile";
 import CompanyHome from "./components/Company/CompanyHome";
 import CompanyApplications from "./components/Company/CompanyApplications";
@@ -17,7 +17,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./components/Signup";
 import StudentLayout from "./components/layout/StudentLayout";
 import TeacherLayout from "./components/layout/TeacherLayout";
-import { getUser, homeFor, isAuthenticated, logout } from "./auth";
+import { getUser, homeFor, isAuthenticated } from "./auth";
 import Applications from "./pages/student/Applications";
 import Convention from "./pages/student/Convention";
 import Home from "./pages/student/Home";
@@ -43,6 +43,11 @@ import ResponsableTemplate from "./pages/responsable/ResponsableTemplate";
 import ResponsableDeadline from "./pages/responsable/ResponsableDeadline";
 import ResponsableProfile from "./pages/responsable/ResponsableProfile";
 import ResponsablePlaceholder from "./pages/responsable/ResponsablePlaceholder";
+import AdminLayout from "./components/layout/AdminLayout";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminInstitutions from "./pages/admin/AdminInstitutions";
+import AdminInstitutionDetail from "./pages/admin/AdminInstitutionDetail";
+import AdminHome from "./pages/admin/AdminHome";
 
 function PublicOnly({ children }) {
   if (isAuthenticated()) {
@@ -50,30 +55,6 @@ function PublicOnly({ children }) {
     if (home !== "/login") return <Navigate to={home} replace />;
   }
   return children;
-}
-
-function RolePlaceholder({ title }) {
-  const navigate = useNavigate();
-  const user = getUser();
-  const name =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
-    user?.companyName ||
-    user?.email;
-  return (
-    <main className="p-8">
-      <h1>{title}</h1>
-      <p>{name}</p>
-      <button
-        type="button"
-        onClick={() => {
-          logout();
-          navigate("/login", { replace: true });
-        }}
-      >
-        Se déconnecter
-      </button>
-    </main>
-  );
 }
 
 export default function App() {
@@ -203,10 +184,19 @@ export default function App() {
         path="/admin"
         element={
           <ProtectedRoute roles={["ADM"]}>
-            <RolePlaceholder title="Espace administrateur" />
+            <AdminLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<AdminHome />} />
+        <Route path="comptes" element={<AdminUsers />} />
+        <Route path="etablissements" element={<AdminInstitutions />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route
+          path="etablissements/:institutionId"
+          element={<AdminInstitutionDetail />}
+        />
+      </Route>
       <Route path="/" element={<Navigate to="/company" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
